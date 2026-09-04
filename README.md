@@ -217,10 +217,11 @@ pestaña.
 ### Parpadeo: cada pestaña sabe cuál es su Claude
 
 Cuando Claude **termina** (`Stop`) o **te pregunta** (`Notification`), su
-pestaña **parpadea** hasta que la miras: se tiñe y se destiñe con su color y
-Kirby late con ella. Se calma sola al activarla con la ventana delante, al
-volver a la ventana si ya estaba puesta, al teclear en ella, o en cuanto Claude
-vuelve al tajo.
+pestaña **parpadea en rosa** hasta que la miras: el fondo se tiñe y se destiñe
+en rosa y Kirby late con él, del mismo rosa, sea cual sea el estado — es el
+grito de «mírame», no el color del estado, que se lo queda el favicon en reposo.
+Se calma sola al activarla con la ventana delante, al volver a la ventana si ya
+estaba puesta, al teclear en ella, o en cuanto Claude vuelve al tajo.
 
 Para saber **de qué pestaña** viene el aviso, el proceso principal arranca cada
 shell con `KIRBY_TAB=<pid de la app>:<id de pestaña>` en el entorno. Los hooks

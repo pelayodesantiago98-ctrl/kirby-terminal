@@ -69,6 +69,10 @@ body[data-state="working"]  { --acc: #3d74db; }
 body[data-state="asking"]   { --acc: #e0a11b; }
 body[data-state="done"]     { --acc: #35b45c; }
 
+/* rosa del aviso: cuando una pestana termina o te pregunta, parpadea en este
+   color, sea cual sea su estado. Es el grito de "mirame", no el del estado. */
+:root { --rosa: #ff4d9d; }
+
 /* --------------------------------------------------------------------------- */
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -574,14 +578,18 @@ body[data-state="asking"] .board { animation: pulse 1.5s ease-in-out infinite; }
 .tab.on.aviso     { animation: aviso-on  1.1s ease-in-out infinite; }
 .tab.aviso .tab-fav { animation: aviso-fav 1.1s ease-in-out infinite; }
 
+/* mientras avisa, la carita tambien se tine de rosa (no del color del estado),
+   asi la pestana entera late en rosa hasta que la miras */
+.tab.aviso        { --acc: var(--rosa); }
+
 @keyframes aviso-off {
   0%, 100% { background-color: transparent; }
-  50%      { background-color: color-mix(in srgb, var(--acc) 40%, transparent); }
+  50%      { background-color: color-mix(in srgb, var(--rosa) 45%, transparent); }
 }
 
 @keyframes aviso-on {
   0%, 100% { background-color: var(--tab-on); }
-  50%      { background-color: color-mix(in srgb, var(--acc) 30%, var(--tab-on)); }
+  50%      { background-color: color-mix(in srgb, var(--rosa) 35%, var(--tab-on)); }
 }
 
 @keyframes aviso-fav {
@@ -775,8 +783,8 @@ body.night .auto.on .auto-go { background: var(--acc); color: #0f1626; }
   .auto-dot, .auto-go { animation: none !important; }
   /* sin parpadeo, pero el aviso se sigue viendo: la pestana se queda tenida */
   .tab.aviso, .tab.on.aviso, .tab.aviso .tab-fav { animation: none !important; }
-  .tab.aviso    { background-color: color-mix(in srgb, var(--acc) 30%, transparent); }
-  .tab.on.aviso { background-color: color-mix(in srgb, var(--acc) 22%, var(--tab-on)); }
+  .tab.aviso    { background-color: color-mix(in srgb, var(--rosa) 32%, transparent); }
+  .tab.on.aviso { background-color: color-mix(in srgb, var(--rosa) 24%, var(--tab-on)); }
   .tab, .tab-new, .tab-side, .ico, .ico-gh { transition: none; }
   .cut { transition: none; }
 }
