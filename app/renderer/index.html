@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'">
+<title>Kirby Terminal</title>
+<link rel="stylesheet" href="../node_modules/@xterm/xterm/css/xterm.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body data-state="idle">
+
+<!-- zona por la que se arrastra la ventana (no hay barra de titulo) -->
+<div class="drag"></div>
+
+<div class="scene" id="scene">
+
+  <!-- 1. bandas de color planas: pared y suelo/mesa. Se estiran sin perder
+          nitidez porque son colores, no imagen. -->
+  <div class="band band-wall"></div>
+  <div class="band band-floor"></div>
+
+  <!-- 2. los unicos mapas de bits: recortes de los dibujos originales -->
+  <div class="cut cut-pointer" title="Kirby con el puntero"></div>
+  <div class="cut cut-desk"    title="Kirby delante del portatil"></div>
+  <div class="cut cut-moon"    title="la ventana con la luna"></div>
+
+  <!-- 3. nube de pensamiento, dibujada en CSS -->
+  <span class="bub bub1"></span>
+  <span class="bub bub2"></span>
+  <span class="bub bub3"></span>
+  <div class="cloud"><div class="dots"><i></i><i></i><i></i></div></div>
+
+  <!-- 4. lo que esta haciendo ahora mismo -->
+  <div class="note">
+    <div class="note-line" id="noteLine">esperando</div>
+    <div class="note-meta"><span id="elapsed">0s</span></div>
+  </div>
+
+  <!-- 5. LA PIZARRA: los terminales de verdad viven aqui dentro, uno por
+          pestana. La tira de pestanas va pegada al borde de arriba. -->
+  <div class="board">
+    <div class="tabs" id="tabs">
+      <div class="tabs-list" id="tabsList">
+        <!-- las pestanas se insertan aqui, siempre delante del + -->
+        <button class="tab-new" id="tabNew" type="button"
+                title="Pestana nueva (cmd+T)" aria-label="Pestana nueva">+</button>
+      </div>
+
+      <!-- mi GitHub -->
+      <button class="tab-side tab-gh" id="tabGh" type="button"
+              title="github.com/pelayodesantiago98-ctrl" aria-label="Abrir mi GitHub">
+        <svg class="ico-gh" viewBox="0 0 16 16" aria-hidden="true">
+          <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.6 7.6 0 0 1 2-.27c.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
+        </svg>
+      </button>
+
+      <!-- dia / noche, al fondo de la tira -->
+      <button class="tab-side tab-mode" id="tabMode" type="button"
+              title="Modo noche (cmd+shift+N)" aria-label="Modo dia o noche">
+        <svg class="ico ico-moon" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M20.5 13.4A8.2 8.2 0 0 1 10.6 3.5 8.5 8.5 0 1 0 20.5 13.4z"/>
+        </svg>
+        <svg class="ico ico-sun" viewBox="0 0 24 24" aria-hidden="true">
+          <circle cx="12" cy="12" r="4.1"/>
+          <path d="M12 2.2v2.4M12 19.4v2.4M2.2 12h2.4M19.4 12h2.4M5.1 5.1l1.7 1.7M17.2 17.2l1.7 1.7M18.9 5.1l-1.7 1.7M6.8 17.2l-1.7 1.7"/>
+        </svg>
+      </button>
+    </div>
+    <div class="board-inner" id="termHost"></div>
+  </div>
+
+  <!-- 6. chip de estado -->
+  <div class="chip"><span class="chip-dot"></span><span id="chipText">en reposo</span></div>
+
+  <!-- 7. intro automatico: pulsa enter cada X segundos, en bucle -->
+  <div class="auto" id="auto">
+    <button class="auto-go" id="autoGo" type="button"
+            title="Pulsa intro cada X segundos (cmd+shift+E)">
+      <span class="auto-dot"></span><span class="auto-key">&#9166;</span>
+      <span id="autoLabel">auto</span>
+    </button>
+    <button class="auto-step" id="autoMinus" type="button" title="menos segundos">&minus;</button>
+    <span class="auto-secs" id="autoSecs">10s</span>
+    <button class="auto-step" id="autoPlus" type="button" title="mas segundos">+</button>
+  </div>
+
+</div>
+
+<script src="../node_modules/@xterm/xterm/lib/xterm.js"></script>
+<script src="../node_modules/@xterm/addon-fit/lib/addon-fit.js"></script>
+<script src="../node_modules/@xterm/addon-webgl/lib/addon-webgl.js"></script>
+<script src="renderer.js"></script>
+</body>
+</html>

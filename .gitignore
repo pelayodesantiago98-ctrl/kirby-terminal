@@ -1,0 +1,8 @@
+# dependencias y empaquetado
+node_modules/
+app/dist/
+app/build/icon.iconset/
+
+# copias de seguridad y basura del sistema
+*.bak
+.DS_Store

@@ -1,0 +1,305 @@
+/* ==========================================================================
+   Claude HUD — hoja de estilos
+   Todo lo ajustable esta en el bloque AJUSTES. Los % son sobre la imagen,
+   asi que si cambias las imagenes solo tienes que retocar esos numeros.
+   ========================================================================== */
+
+:root {
+  /* ---------------------- AJUSTES: pizarra (terminal.jpg) --------------- */
+  /* Zona blanca interior del tablero. Empieza en 54.5% para no tapar la
+     punta del puntero de Kirby, que llega hasta el 53%. */
+  --board-left:   54.5%;
+  --board-top:    28.5%;
+  --board-width:  32.5%;
+  --board-height: 30%;
+
+  /* ---------------------- AJUSTES: escena pensando (thinking.jpg) ------- */
+  --cloud-left:   27%;
+  --cloud-top:     9%;
+  --cloud-width:  26%;
+  --cloud-height: 17%;
+
+  --caption-left:  7%;
+  --caption-top:  70%;
+  --caption-width: 86%;
+
+  /* ---------------------- Paleta (muestreada de las imagenes) ----------- */
+  --wall-day:   #c2d9e7;   /* pared escena terminal  */
+  --desk-day:   #8db9d6;   /* mesa escena terminal   */
+  --wall-night: #1f3fac;   /* pared escena pensando  */
+  --floor-night:#3b7ae4;   /* suelo escena pensando  */
+  --ink:        #2f52bd;   /* azul del rotulador     */
+  --ink-soft:   #6a8ad6;
+  --outline:    #10121a;   /* el negro de los bordes */
+  --paper:      #ffffff;
+
+  /* Acento por estado */
+  --accent: #6e7681;
+}
+
+body[data-state="thinking"] { --accent: #a371f7; }
+body[data-state="working"]  { --accent: #3d74db; }
+body[data-state="asking"]   { --accent: #e0a11b; }
+body[data-state="done"]     { --accent: #35b45c; }
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body { height: 100%; }
+
+body {
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background: var(--wall-day);
+  font-family: ui-rounded, "SF Pro Rounded", -apple-system, "Segoe UI", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  transition: background .35s ease;
+  cursor: default;
+  user-select: none;
+}
+body[data-state="thinking"],
+body[data-state="working"] { background: var(--wall-night); }
+
+/* --------------------------------------------------------------------------
+   Escenario cuadrado, siempre lo mas grande que quepa
+   -------------------------------------------------------------------------- */
+.stage {
+  position: relative;
+  width: min(100vw, 100vh);
+  aspect-ratio: 1 / 1;
+  container-type: size;
+  overflow: hidden;
+}
+
+.scene {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity .28s ease;
+}
+body[data-state="thinking"] .scene-think,
+body[data-state="working"]  .scene-think,
+body[data-state="idle"]     .scene-board,
+body[data-state="asking"]   .scene-board,
+body[data-state="done"]     .scene-board { opacity: 1; visibility: visible; }
+
+.art {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* --------------------------------------------------------------------------
+   Paneles de papel — mismo lenguaje visual que la pizarra del dibujo:
+   blanco, borde negro grueso, esquinas redondeadas.
+   -------------------------------------------------------------------------- */
+.panel {
+  background: var(--paper);
+  border: 0.45cqw solid var(--outline);
+  border-radius: 1.6cqw;
+}
+
+/* --------------------------------------------------------------------------
+   ESCENA B — la pizarra
+   -------------------------------------------------------------------------- */
+.board {
+  position: absolute;
+  left:   var(--board-left);
+  top:    var(--board-top);
+  width:  var(--board-width);
+  height: var(--board-height);
+  background: var(--paper);      /* tapa el "POYO POYO" y el grafico */
+  padding: 0.8cqw 1cqw;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5cqw;
+  overflow: hidden;
+}
+
+.board-title {
+  flex: none;
+  font-weight: 800;
+  font-size: 2.3cqw;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+  text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.board-title::after {
+  content: "";
+  display: block;
+  height: 0.28cqw;
+  margin-top: 0.4cqw;
+  border-radius: 1cqw;
+  background: var(--accent);
+  transition: background .3s ease;
+}
+
+.board-body {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  font-size: 1.35cqw;          /* app.js lo ajusta para que quepa */
+  line-height: 1.45;
+  color: #24365f;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.board-body:empty::before {
+  content: "poyo poyo";
+  color: var(--ink-soft);
+  font-style: italic;
+}
+
+/* Linea suelta sobre la mesa: metadatos discretos */
+.desk {
+  position: absolute;
+  left: 6%;
+  right: 6%;
+  top: 68%;
+  font-size: 1.25cqw;
+  letter-spacing: 0.02em;
+  color: #38618a;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Cuando te esta preguntando, la pizarra late para que lo veas de reojo */
+body[data-state="asking"] .board { animation: pulse 1.5s ease-in-out infinite; }
+@keyframes pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(224, 161, 27, 0); }
+  50%      { box-shadow: 0 0 0 0.9cqw rgba(224, 161, 27, .55); }
+}
+
+/* --------------------------------------------------------------------------
+   ESCENA A — burbujas + nube de pensamiento
+   -------------------------------------------------------------------------- */
+.bub {
+  position: absolute;
+  background: var(--paper);
+  border: 0.4cqw solid var(--outline);
+  border-radius: 50%;
+  opacity: 0;
+  animation: rise 2.4s ease-in-out infinite;
+}
+.bub1 { left: 41.5%; top: 37%;   width: 3.6%; aspect-ratio: 1; animation-delay: 0s;   }
+.bub2 { left: 39.5%; top: 32%;   width: 5%;   aspect-ratio: 1; animation-delay: .22s; }
+.bub3 { left: 36.5%; top: 26.5%; width: 6.5%; aspect-ratio: 1; animation-delay: .44s; }
+
+@keyframes rise {
+  0%        { opacity: 0; transform: translateY(1.2cqw) scale(.55); }
+  22%, 62%  { opacity: 1; transform: translateY(0)      scale(1);   }
+  85%, 100% { opacity: 0; transform: translateY(-.8cqw) scale(.9);  }
+}
+
+.cloud {
+  position: absolute;
+  left:   var(--cloud-left);
+  top:    var(--cloud-top);
+  width:  var(--cloud-width);
+  height: var(--cloud-height);
+  background: var(--paper);
+  border: 0.45cqw solid var(--outline);
+  border-radius: 50% / 46%;
+  display: grid;
+  place-items: center;
+  animation: bob 3.4s ease-in-out infinite;
+}
+@keyframes bob {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-1cqw); }
+}
+
+.dots { display: flex; gap: 1.1cqw; }
+.dots i {
+  width: 1.5cqw;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: think 1.25s ease-in-out infinite;
+  transition: background .3s ease;
+}
+.dots i:nth-child(2) { animation-delay: .16s; }
+.dots i:nth-child(3) { animation-delay: .32s; }
+@keyframes think {
+  0%, 70%, 100% { transform: translateY(0)      scale(1);   opacity: .45; }
+  35%           { transform: translateY(-.9cqw) scale(1.25); opacity: 1;  }
+}
+
+/* Lo que esta haciendo, debajo del muneco */
+.caption {
+  position: absolute;
+  left:  var(--caption-left);
+  top:   var(--caption-top);
+  width: var(--caption-width);
+  padding: 1.2cqw 1.6cqw;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4cqw;
+}
+
+.caption-line {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  font-size: 1.75cqw;
+  line-height: 1.35;
+  color: #24365f;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
+.caption-meta {
+  font-size: 1.25cqw;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-soft);
+}
+
+/* --------------------------------------------------------------------------
+   Chip de estado (arriba a la derecha en las dos escenas)
+   -------------------------------------------------------------------------- */
+.chip {
+  position: absolute;
+  right: 5%;
+  top: 5%;
+  display: flex;
+  align-items: center;
+  gap: 0.7cqw;
+  padding: 0.7cqw 1.3cqw;
+  background: var(--paper);
+  border: 0.4cqw solid var(--outline);
+  border-radius: 10cqw;
+  font-size: 1.35cqw;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  color: #24365f;
+  white-space: nowrap;
+}
+.chip-dot {
+  width: 1.2cqw;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: var(--accent);
+  transition: background .3s ease;
+}
+body[data-state="thinking"] .chip-dot,
+body[data-state="working"]  .chip-dot { animation: blink 1.1s ease-in-out infinite; }
+@keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: .25; } }
+
+/* Aviso de que el servidor no responde */
+.offline .chip { opacity: .45; }
+
+@media (prefers-reduced-motion: reduce) {
+  .bub, .cloud, .dots i, .chip-dot, .board { animation: none !important; }
+}

@@ -1,0 +1,573 @@
+<title>Kirby Terminal Tuner</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;700;800&family=Nunito:wght@400;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap">
+
+<style>
+/* ---------------------------------------------------------------------------
+   Paleta muestreada de los dos dibujos:
+   #C2D9E7 pared dia · #8DB9D6 mesa · #1F3FAC pared noche · #3B7AE4 suelo
+   #3D74DB tinta · #FF98C1 Kirby · #10121A contornos
+   --------------------------------------------------------------------------- */
+:root {
+  --ground:  #eaf0f7;
+  --surface: #ffffff;
+  --sunken:  #dfe8f3;
+  --line:    #c4d3e6;
+  --ink:     #16203a;
+  --muted:   #5d6d8c;
+  --accent:  #3d74db;
+  --pink:    #ff5fa2;
+  --shadow:  0 1px 2px rgba(22,32,58,.06), 0 8px 24px rgba(22,32,58,.08);
+  --radius: 14px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ground:  #0b1226; --surface: #141d38; --sunken: #0e1730;
+    --line:    #26325a; --ink:     #e6ecfa; --muted:  #96a5c8;
+    --accent:  #6f9df0;
+    --shadow:  0 1px 2px rgba(0,0,0,.4), 0 10px 28px rgba(0,0,0,.35);
+  }
+}
+:root[data-theme="dark"] {
+  --ground:  #0b1226; --surface: #141d38; --sunken: #0e1730;
+  --line:    #26325a; --ink:     #e6ecfa; --muted:  #96a5c8;
+  --accent:  #6f9df0;
+  --shadow:  0 1px 2px rgba(0,0,0,.4), 0 10px 28px rgba(0,0,0,.35);
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--ink);
+  font-family: Nunito, ui-sans-serif, system-ui, sans-serif;
+  font-size: 15px; line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+
+.wrap { max-width: 1280px; margin: 0 auto; padding: 32px 24px 72px; display: flex; flex-direction: column; gap: 26px; }
+
+h1 {
+  font-family: "Baloo 2", Nunito, sans-serif;
+  margin: 0; font-size: clamp(28px, 4vw, 40px); font-weight: 800;
+  line-height: 1.05; letter-spacing: -.02em; text-wrap: balance;
+}
+h1 em { font-style: normal; color: var(--pink); }
+header { display: flex; flex-direction: column; gap: 6px; }
+header p { margin: 0; max-width: 64ch; color: var(--muted); }
+
+.cols { display: grid; grid-template-columns: minmax(0,1fr) 320px; gap: 24px; align-items: start; }
+@media (max-width: 940px) { .cols { grid-template-columns: minmax(0,1fr); } }
+
+/* ---------- caja del escenario ---------- */
+.stage-card {
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 12px; box-shadow: var(--shadow);
+  display: flex; flex-direction: column; gap: 10px;
+}
+/* El escenario se dibuja a 1320x860 (el tamano real de la ventana) y se
+   escala. Asi los bordes y los cuerpos de letra salen exactos, no aproximados. */
+.holder { position: relative; width: 100%; overflow: hidden; border-radius: 8px; }
+.scene {
+  position: absolute; top: 0; left: 0;
+  width: 1320px; height: 860px;
+  transform-origin: top left;
+  overflow: hidden;
+}
+
+/* =========================================================================
+   A PARTIR DE AQUI ES EL MISMO CSS QUE app/renderer/style.css
+   ========================================================================= */
+.scene {
+  --wall-day:#c2d9e7; --desk-day:#8db9d6; --wall-night:#1f3fac; --floor-night:#3b7ae4;
+  --outline:#10121a; --paper:#fff; --board-ink:#24365f;
+  --acc:#6e7681;
+}
+body[data-state="thinking"] .scene { --acc:#a371f7; }
+body[data-state="working"]  .scene { --acc:#3d74db; }
+body[data-state="asking"]   .scene { --acc:#e0a11b; }
+body[data-state="done"]     .scene { --acc:#35b45c; }
+
+.band { position: absolute; left: 0; right: 0; z-index: 0; }
+.band-wall { top: 0; }
+.band-floor { bottom: 0; }
+body[data-state="idle"] .band-wall, body[data-state="asking"] .band-wall, body[data-state="done"] .band-wall
+  { height: var(--table-y); background: var(--wall-day); }
+body[data-state="idle"] .band-floor, body[data-state="asking"] .band-floor, body[data-state="done"] .band-floor
+  { top: var(--table-y); background: var(--desk-day); }
+body[data-state="thinking"] .band-wall, body[data-state="working"] .band-wall
+  { height: var(--horizon-y); background: var(--wall-night); }
+body[data-state="thinking"] .band-floor, body[data-state="working"] .band-floor
+  { top: var(--horizon-y); background: var(--floor-night); }
+.band-floor::before { content:""; position:absolute; inset:0 0 auto 0; height:3px; background: var(--outline); }
+
+.cut {
+  position: absolute; z-index: 1; background-repeat: no-repeat;
+  opacity: 0; visibility: hidden;
+  transition: opacity .3s ease, visibility 0s linear .3s;
+}
+.cut-pointer {
+  background-size: 212.77% 294.12%; background-position: 5.66% 42.42%; aspect-ratio: 1.3824;
+  width: var(--pointer-w); top: var(--pointer-top);
+  left: calc(var(--term-left) - var(--pointer-w));
+}
+.cut-desk {
+  background-size: 125% 250%; background-position: 75% 50%; aspect-ratio: 2;
+  height: var(--desk-h); left: var(--desk-left); top: var(--desk-top);
+}
+.cut-moon {
+  background-size: 357.14% 312.5%; background-position: 0 0; aspect-ratio: .875;
+  height: var(--moon-h); right: var(--moon-right); top: var(--moon-top);
+}
+body[data-state="idle"] .cut-pointer, body[data-state="asking"] .cut-pointer, body[data-state="done"] .cut-pointer,
+body[data-state="thinking"] .cut-desk, body[data-state="working"] .cut-desk,
+body[data-state="thinking"] .cut-moon, body[data-state="working"] .cut-moon {
+  opacity: 1; visibility: visible; transition: opacity .3s ease, visibility 0s;
+}
+
+@keyframes respirar { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
+@keyframes teclear  { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-2px); } }
+@keyframes insistir {
+  0%, 58%, 100% { transform: translateY(0); }
+  68%           { transform: translateY(-9px); }
+  78%           { transform: translateY(0); }
+  86%           { transform: translateY(-4px); }
+}
+.cut-pointer { animation: respirar 3.6s ease-in-out infinite; }
+.cut-desk    { animation: respirar 4.2s ease-in-out infinite; }
+body[data-state="asking"]  .cut-pointer { animation: insistir 2.6s ease-in-out infinite; }
+body[data-state="working"] .cut-desk    { animation: teclear  .38s ease-in-out infinite; }
+
+.bub, .cloud { z-index: 2; display: none; }
+body[data-state="thinking"] .bub, body[data-state="working"] .bub { display: block; }
+body[data-state="thinking"] .cloud, body[data-state="working"] .cloud { display: grid; }
+
+.bub {
+  position: absolute; background: var(--paper); border: 3px solid var(--outline);
+  border-radius: 50%; opacity: 0; animation: rise 2.4s ease-in-out infinite;
+}
+.bub1 { left: 17%;   top: 14.5%; width: 1.1%; aspect-ratio: 1; }
+.bub2 { left: 15%;   top: 12.8%; width: 1.5%; aspect-ratio: 1; animation-delay: .22s; }
+.bub3 { left: 12.5%; top: 11%;   width: 2%;   aspect-ratio: 1; animation-delay: .44s; }
+@keyframes rise {
+  0%       { opacity: 0; transform: translateY(10px) scale(.55); }
+  22%, 62% { opacity: 1; transform: translateY(0)    scale(1);   }
+  85%,100% { opacity: 0; transform: translateY(-7px) scale(.9);  }
+}
+
+.cloud {
+  position: absolute; left: var(--cloud-left); top: var(--cloud-top);
+  width: var(--cloud-w); height: var(--cloud-h);
+  background: var(--paper); border: 4px solid var(--outline);
+  border-radius: 50% / 46%; place-items: center;
+  animation: bob 3.4s ease-in-out infinite;
+}
+@keyframes bob { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
+.dots { display: flex; gap: 9px; }
+.dots i { width: 12px; height: 12px; border-radius: 50%; background: var(--acc); animation: think 1.25s ease-in-out infinite; }
+.dots i:nth-child(2) { animation-delay: .16s; }
+.dots i:nth-child(3) { animation-delay: .32s; }
+@keyframes think {
+  0%,70%,100% { transform: translateY(0)    scale(1);    opacity: .45; }
+  35%         { transform: translateY(-7px) scale(1.25); opacity: 1;   }
+}
+
+.note {
+  position: absolute; z-index: 2;
+  left: var(--note-left); top: var(--note-top); width: var(--note-w);
+  padding: 12px 14px; background: var(--paper);
+  border: 4px solid var(--outline); border-radius: 16px;
+  display: none; flex-direction: column; gap: 5px;
+}
+body[data-state="thinking"] .note, body[data-state="working"] .note { display: flex; }
+.note-line { font-family: "JetBrains Mono", monospace; font-size: 13px; line-height: 1.4; color: var(--board-ink); overflow-wrap: anywhere; }
+.note-meta { font-size: 12px; color: #6a8ad6; font-variant-numeric: tabular-nums; }
+
+.board {
+  position: absolute; z-index: 3;
+  left: var(--term-left); top: var(--term-top);
+  right: var(--term-right); bottom: var(--term-bottom);
+  background: var(--paper); border: 9px solid var(--outline);
+  border-radius: 20px; padding: 14px 16px; overflow: hidden;
+}
+body[data-state="thinking"] .board, body[data-state="working"] .board { box-shadow: 0 14px 0 -4px rgba(8,24,64,.35); }
+body[data-state="asking"] .board { animation: pulse 1.5s ease-in-out infinite; }
+@keyframes pulse {
+  0%,100% { box-shadow: 0 0 0 0    rgba(224,161,27,0);   }
+  50%     { box-shadow: 0 0 0 10px rgba(224,161,27,.55); }
+}
+
+.chip {
+  position: absolute; z-index: 4;
+  left: var(--note-left); top: calc(var(--note-top) - 6%);
+  display: flex; align-items: center; gap: 7px; padding: 7px 13px;
+  background: var(--paper); border: 3px solid var(--outline); border-radius: 999px;
+  font-family: "Baloo 2", sans-serif; font-size: 13px; font-weight: 700; color: var(--board-ink); white-space: nowrap;
+}
+body[data-state="idle"] .chip, body[data-state="asking"] .chip, body[data-state="done"] .chip { display: none; }
+.chip-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--acc); }
+body[data-state="thinking"] .chip-dot, body[data-state="working"] .chip-dot { animation: blink 1.1s ease-in-out infinite; }
+@keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: .25; } }
+
+/* terminal simulado, con la misma metrica que xterm a 12.5px */
+.fake {
+  font-family: "JetBrains Mono", "SF Mono", Menlo, monospace;
+  font-size: 12.5px; line-height: 1.25; color: #24365f;
+  white-space: pre-wrap; margin: 0; height: 100%; overflow: hidden;
+}
+.fake .d { color: #5d6d8c; }
+.fake .b { color: #3d74db; }
+.fake .g { color: #2f8f4e; }
+.fake .y { color: #a97a12; }
+.fake .m { color: #a371f7; }
+.fake .s { font-weight: 700; }
+.caret { background: #3d74db; color: #fff; }
+
+/* ---------- rejilla de porcentajes ---------- */
+.grid {
+  position: absolute; inset: 0; z-index: 9; pointer-events: none; opacity: 0; transition: opacity .2s;
+  background:
+    repeating-linear-gradient(to right,  rgba(255,0,120,.5) 0 1px, transparent 1px 10%),
+    repeating-linear-gradient(to bottom, rgba(255,0,120,.5) 0 1px, transparent 1px 10%),
+    repeating-linear-gradient(to right,  rgba(255,0,120,.2) 0 1px, transparent 1px 5%),
+    repeating-linear-gradient(to bottom, rgba(255,0,120,.2) 0 1px, transparent 1px 5%);
+}
+body.show-grid .grid { opacity: 1; }
+
+/* ---------- controles ---------- */
+.rail { display: flex; flex-direction: column; gap: 14px; }
+.card {
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 15px; box-shadow: var(--shadow); display: flex; flex-direction: column; gap: 11px;
+}
+.card h2 {
+  font-family: "Baloo 2", sans-serif;
+  margin: 0; font-size: 12px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .09em; color: var(--muted);
+}
+.states { display: flex; flex-wrap: wrap; gap: 6px; }
+.states button {
+  flex: 1 1 auto; font: inherit; font-weight: 700; font-size: 13px;
+  padding: 7px 10px; border-radius: 999px; border: 1px solid var(--line);
+  background: var(--sunken); color: var(--ink); cursor: pointer;
+  display: flex; align-items: center; justify-content: center; gap: 7px;
+  transition: background .15s, border-color .15s, transform .1s;
+}
+.states button:hover { border-color: var(--accent); }
+.states button:active { transform: translateY(1px); }
+.states button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+.states button::before { content:""; width:8px; height:8px; border-radius:50%; background: var(--sc); box-shadow: 0 0 0 1px rgba(0,0,0,.15) inset; }
+
+:where(button, input):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.slider { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 3px 10px; }
+.slider > label { font-size: 12px; color: var(--muted); font-weight: 600; }
+.slider > output { font: 500 12px/1 "JetBrains Mono", monospace; color: var(--accent); font-variant-numeric: tabular-nums; }
+.slider > input { grid-column: 1 / -1; width: 100%; accent-color: var(--accent); }
+
+.toggles { display: flex; gap: 14px; flex-wrap: wrap; font-size: 13px; }
+.toggles label { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+.toggles input { accent-color: var(--accent); }
+
+pre.out {
+  margin: 0; font: 400 11.5px/1.65 "JetBrains Mono", monospace;
+  background: var(--sunken); border: 1px solid var(--line); border-radius: 9px;
+  padding: 11px; overflow-x: auto; color: var(--ink); max-height: 260px; overflow-y: auto;
+}
+.row { display: flex; gap: 8px; }
+.btn {
+  font: inherit; font-weight: 700; font-size: 13px; padding: 8px 12px; border-radius: 9px;
+  border: 1px solid var(--line); background: var(--sunken); color: var(--ink); cursor: pointer;
+}
+.btn:hover { border-color: var(--accent); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+footer { border-top: 1px solid var(--line); padding-top: 18px; color: var(--muted); font-size: 13.5px; max-width: 74ch; display: flex; flex-direction: column; gap: 10px; }
+footer code { font-family: "JetBrains Mono", monospace; font-size: 12px; background: var(--sunken); padding: 1px 5px; border-radius: 5px; }
+footer strong { color: var(--ink); }
+
+@media (prefers-reduced-motion: reduce) { .bub, .cloud, .dots i, .chip-dot, .board { animation: none !important; } }
+</style>
+
+<div class="wrap">
+
+  <header>
+    <h1>Kirby <em>Terminal</em></h1>
+    <p>El terminal de verdad va dentro de la pizarra, y en la escena de pensar
+       queda abajo, sobre la mesa. Aquí está la composición exacta de la app a
+       tamaño real, con el terminal simulado. Mueve los deslizadores y pega el
+       CSS resultante en el bloque <code>AJUSTES</code> de
+       <code>app/renderer/style.css</code>.</p>
+  </header>
+
+  <div class="cols">
+
+    <div class="stage-card">
+      <div class="holder" id="holder">
+        <div class="scene" id="scene">
+          <div class="band band-wall"></div>
+          <div class="band band-floor"></div>
+
+          <div class="cut cut-pointer" id="cutPointer"></div>
+          <div class="cut cut-desk"    id="cutDesk"></div>
+          <div class="cut cut-moon"    id="cutMoon"></div>
+
+          <span class="bub bub1"></span>
+          <span class="bub bub2"></span>
+          <span class="bub bub3"></span>
+          <div class="cloud"><div class="dots"><i></i><i></i><i></i></div></div>
+
+          <div class="note">
+            <div class="note-line" id="noteLine">Leyendo style.css</div>
+            <div class="note-meta"><span id="elapsed">0s</span></div>
+          </div>
+
+          <div class="board"><pre class="fake" id="fake"></pre></div>
+
+          <div class="chip"><span class="chip-dot"></span><span id="chipText">en reposo</span></div>
+          <div class="grid"></div>
+        </div>
+      </div>
+
+      <div class="toggles">
+        <label><input type="checkbox" id="gridToggle"> Rejilla de porcentajes</label>
+        <label><input type="checkbox" id="autoToggle"> Rotar estados solo</label>
+      </div>
+    </div>
+
+    <div class="rail">
+      <section class="card">
+        <h2>Estado</h2>
+        <div class="states" id="states"></div>
+      </section>
+
+      <section class="card">
+        <h2>Terminal · igual en los dos estados</h2>
+        <div id="gTerm"></div>
+      </section>
+
+      <section class="card">
+        <h2>Escena pizarra</h2>
+        <div id="gBoard"></div>
+      </section>
+
+      <section class="card">
+        <h2>Escena pensando</h2>
+        <div id="gThink"></div>
+      </section>
+
+      <section class="card">
+        <h2>CSS resultante</h2>
+        <pre class="out" id="css"></pre>
+        <div class="row">
+          <button class="btn primary" id="copy">Copiar</button>
+          <button class="btn" id="reset">Reiniciar</button>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <footer>
+    <p><strong>Por qué el terminal no se mueve entre estados.</strong> Si cambiara
+      de tamaño, el PTY se redimensionaría cada vez que Claude toca una
+      herramienta y el TUI se repintaría entero. Así que el rectángulo se queda
+      quieto y lo que se mueve es Kirby: a su izquierda apuntando con el puntero,
+      o arriba en el portátil con el terminal debajo, sobre la mesa.</p>
+    <p><strong>Los dibujos ya no son los JPG originales.</strong> Se reescalaron
+      ×4 con Real-ESRGAN (modelo de anime, el que está pensado para arte plano
+      con contornos), y después se rellenó la pared por inundación para quitar
+      el halo claro que el escalador reconstruía a partir del <em>ringing</em>
+      del JPEG. Vectorizar se probó primero y se descartó: a 236&nbsp;px los ojos
+      de Kirby son cuatro píxeles y cualquier filtro que quite el ruido se los
+      lleva por delante.</p>
+    <p><strong>Esta composición está medida, no estimada.</strong> Se renderizó
+      la app real en un Chromium headless y se corrigió mirando el resultado: el
+      recorte de Kirby se ciñó (antes el 70&nbsp;% de su caja era pared vacía y
+      salía diminuto) y se cortó en el 50&nbsp;% exacto, porque el marco negro de
+      la pizarra <em>del dibujo</em> empieza en el 50,5&nbsp;% y se colaba como
+      una raya negra junto al puntero. A 1320×860 el terminal queda en
+      <strong>94 columnas × 37 filas</strong>.</p>
+  </footer>
+</div>
+
+<script>
+const STATES = [
+  { id:'idle',     label:'reposo',      chip:'en reposo',   color:'#6e7681' },
+  { id:'thinking', label:'pensando',    chip:'pensando',    color:'#a371f7' },
+  { id:'working',  label:'consultando', chip:'consultando', color:'#3d74db' },
+  { id:'asking',   label:'pregunta',    chip:'te pregunta', color:'#e0a11b' },
+  { id:'done',     label:'listo',       chip:'listo',       color:'#35b45c' },
+];
+
+const VARS = [
+  { g:'gTerm',  k:'--term-left',   l:'terminal · izquierda', d:42,  min:20, max:60 },
+  { g:'gTerm',  k:'--term-top',    l:'terminal · arriba',    d:14,  min:5,  max:45 },
+  { g:'gTerm',  k:'--term-right',  l:'margen derecho',       d:3,   min:0,  max:15 },
+  { g:'gTerm',  k:'--term-bottom', l:'margen inferior',      d:6,   min:0,  max:25 },
+
+  { g:'gBoard', k:'--table-y',     l:'línea de la mesa',     d:66,  min:45, max:90 },
+  { g:'gBoard', k:'--pointer-w',   l:'Kirby · ancho',        d:40,  min:15, max:60 },
+  { g:'gBoard', k:'--pointer-top', l:'Kirby · arriba',       d:24,  min:0,  max:60 },
+
+  { g:'gThink', k:'--horizon-y',   l:'línea del suelo',      d:26,  min:8,  max:60 },
+  { g:'gThink', k:'--desk-left',   l:'Kirby · izquierda',    d:6,   min:0,  max:50 },
+  { g:'gThink', k:'--desk-top',    l:'Kirby · arriba',       d:8,   min:0,  max:30 },
+  { g:'gThink', k:'--desk-h',      l:'Kirby · alto',         d:24,  min:8,  max:40 },
+  { g:'gThink', k:'--cloud-left',  l:'nube · izquierda',     d:5,   min:0,  max:40 },
+  { g:'gThink', k:'--cloud-top',   l:'nube · arriba',        d:0.5, min:0,  max:30 },
+  { g:'gThink', k:'--cloud-w',     l:'nube · ancho',         d:13,  min:5,  max:26 },
+  { g:'gThink', k:'--cloud-h',     l:'nube · alto',          d:11,  min:5,  max:28 },
+  { g:'gThink', k:'--note-left',   l:'nota · izquierda',     d:4,   min:0,  max:30 },
+  { g:'gThink', k:'--note-top',    l:'nota · arriba',        d:52,  min:15, max:85 },
+  { g:'gThink', k:'--note-w',      l:'nota · ancho',         d:32,  min:12, max:42 },
+  { g:'gThink', k:'--moon-right',  l:'luna · derecha',       d:2,   min:0,  max:60 },
+  { g:'gThink', k:'--moon-top',    l:'luna · arriba',        d:1.5, min:0,  max:30 },
+  { g:'gThink', k:'--moon-h',      l:'luna · alto',          d:11,  min:5,  max:35 },
+];
+
+const scene  = document.getElementById('scene');
+const holder = document.getElementById('holder');
+const cssOut = document.getElementById('css');
+const S = {};
+
+for (const v of VARS) {
+  const wrap = document.createElement('div');
+  wrap.className = 'slider';
+  const id = 'i' + v.k.replace(/-/g, '');
+  wrap.innerHTML =
+    '<label for="' + id + '">' + v.l + '</label>' +
+    '<output></output>' +
+    '<input type="range" id="' + id + '" min="' + v.min + '" max="' + v.max + '" step="0.5">';
+  document.getElementById(v.g).appendChild(wrap);
+  S[v.k] = { el: wrap.querySelector('input'), out: wrap.querySelector('output') };
+  S[v.k].el.addEventListener('input', apply);
+}
+
+function apply() {
+  for (const v of VARS) {
+    const val = parseFloat(S[v.k].el.value);
+    S[v.k].out.textContent = val + '%';
+    scene.style.setProperty(v.k, val + '%');
+  }
+  cssOut.textContent = VARS.map(v => '  ' + v.k + ': ' + parseFloat(S[v.k].el.value) + '%;').join('\n');
+}
+function reset() { for (const v of VARS) S[v.k].el.value = v.d; apply(); }
+
+/* --- escalar el escenario 1320x860 al ancho disponible --- */
+function scale() {
+  const k = holder.clientWidth / 1320;
+  scene.style.transform = 'scale(' + k + ')';
+  holder.style.height = (860 * k) + 'px';
+}
+new ResizeObserver(scale).observe(holder);
+
+/* --- estados --- */
+let current = 'done', since = Date.now();
+const host = document.getElementById('states');
+for (const s of STATES) {
+  const b = document.createElement('button');
+  b.type = 'button'; b.textContent = s.label;
+  b.style.setProperty('--sc', s.color);
+  b.setAttribute('aria-pressed', 'false');
+  b.addEventListener('click', () => setState(s.id));
+  host.appendChild(b); s.node = b;
+}
+
+const FAKE = {
+  idle: [
+    ['d', '~/proyectos/lepayimio '], ['b s', '❯ '], ['', 'claude'], ['\n\n'],
+    ['d', '  ✻ Bienvenido a Claude Code\n\n'],
+    ['d', '  cwd: /Users/pelayo/proyectos/lepayimio\n'],
+  ],
+  thinking: [
+    ['b s', '❯ '], ['', 'revisa por qué falla el deploy de nginx\n\n'],
+    ['m', '  ✻ '], ['d', 'Pensando…\n'],
+  ],
+  working: [
+    ['b s', '❯ '], ['', 'revisa por qué falla el deploy de nginx\n\n'],
+    ['m', '  ✻ '], ['d', 'Voy a mirar la config y los logs del servicio.\n\n'],
+    ['g', '  ⏺ '], ['s', 'Read'], ['d', '(nginx/sites-available/lepayimio.es)\n'],
+    ['d', '    ⎿  leídas 84 líneas\n\n'],
+    ['g', '  ⏺ '], ['s', 'Bash'], ['d', '(systemctl status nginx --no-pager)\n'],
+    ['d', '    ⎿  '], ['y', 'Job for nginx.service failed\n'],
+  ],
+  asking: [
+    ['g', '  ⏺ '], ['s', 'Bash'], ['d', '(systemctl restart nginx)\n\n'],
+    ['y s', '  ¿Permites ejecutar este comando?\n\n'],
+    ['', '    1. Sí\n'],
+    ['', '    2. Sí, y no preguntes más en esta sesión\n'],
+    ['', '    3. No, y dime qué hacer '], ['caret', ' '],
+  ],
+  done: [
+    ['m', '  ✻ '], ['d', 'Encontrado.\n\n'],
+    ['', '  El '], ['s', 'server_name'], ['', ' de lepayimio.es estaba duplicado en\n'],
+    ['', '  sites-enabled: el enlace viejo seguía ahí y nginx\n'],
+    ['', '  abortaba al cargar. Borrado el enlace y recargado.\n\n'],
+    ['g', '  ⏺ '], ['s', 'Bash'], ['d', '(nginx -t)\n'],
+    ['d', '    ⎿  '], ['g', 'syntax is ok · test is successful\n\n'],
+    ['d', '~/proyectos/lepayimio '], ['b s', '❯ '], ['caret', ' '],
+  ],
+};
+
+const fakeEl = document.getElementById('fake');
+function paintFake(id) {
+  fakeEl.replaceChildren();
+  for (const part of (FAKE[id] || [])) {
+    const cls = part.length > 1 ? part[0] : '';
+    const txt = part.length > 1 ? part[1] : part[0];
+    const sp = document.createElement('span');
+    if (cls) sp.className = cls;
+    sp.textContent = txt;
+    fakeEl.appendChild(sp);
+  }
+}
+
+function setState(id) {
+  current = id; since = Date.now();
+  document.body.dataset.state = id;
+  for (const s of STATES) s.node.setAttribute('aria-pressed', String(s.id === id));
+  const s = STATES.find(x => x.id === id) || {};
+  document.getElementById('chipText').textContent = s.chip || '';
+  document.getElementById('noteLine').textContent =
+    id === 'working' ? '$ systemctl status nginx --no-pager' : 'Pensando';
+  paintFake(id);
+  tick();
+}
+function tick() {
+  const n = Math.floor((Date.now() - since) / 1000);
+  document.getElementById('elapsed').textContent =
+    n < 60 ? n + 's' : Math.floor(n / 60) + 'm ' + String(n % 60).padStart(2, '0') + 's';
+}
+setInterval(tick, 1000);
+
+document.getElementById('gridToggle').addEventListener('change', e =>
+  document.body.classList.toggle('show-grid', e.target.checked));
+
+let auto = null;
+document.getElementById('autoToggle').addEventListener('change', e => {
+  clearInterval(auto);
+  if (!e.target.checked) return;
+  let i = STATES.findIndex(s => s.id === current);
+  auto = setInterval(() => { i = (i + 1) % STATES.length; setState(STATES[i].id); }, 3000);
+});
+
+document.getElementById('copy').addEventListener('click', e => {
+  navigator.clipboard.writeText(cssOut.textContent).then(
+    () => { e.target.textContent = 'Copiado'; setTimeout(() => e.target.textContent = 'Copiar', 1400); },
+    () => { e.target.textContent = 'No se pudo'; setTimeout(() => e.target.textContent = 'Copiar', 1400); });
+});
+document.getElementById('reset').addEventListener('click', reset);
+
+/* --- las dos imágenes, incrustadas --- */
+const THINK = 'data:image/png;base64,__THINKING_B64__';
+const BOARD = 'data:image/png;base64,__TERMINAL_B64__';
+document.getElementById('cutPointer').style.backgroundImage = 'url("' + BOARD + '")';
+document.getElementById('cutDesk').style.backgroundImage    = 'url("' + THINK + '")';
+document.getElementById('cutMoon').style.backgroundImage    = 'url("' + THINK + '")';
+
+reset();
+scale();
+setState('done');
+</script>

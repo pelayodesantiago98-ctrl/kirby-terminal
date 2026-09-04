@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Claude HUD</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body data-state="idle">
+
+<div class="stage" id="stage">
+
+  <!-- ============ ESCENA A: pensando / consultando ============ -->
+  <section class="scene scene-think" id="sceneThink">
+    <img class="art" id="artThink" alt="">
+
+    <!-- burbujas que suben desde la cabeza -->
+    <span class="bub bub1"></span>
+    <span class="bub bub2"></span>
+    <span class="bub bub3"></span>
+
+    <!-- nube de pensamiento con los puntos animados -->
+    <div class="cloud">
+      <div class="dots"><i></i><i></i><i></i></div>
+    </div>
+
+    <!-- lo que esta haciendo, debajo del muneco -->
+    <div class="panel caption">
+      <div class="caption-line" id="thinkLine">esperando</div>
+      <div class="caption-meta"><span id="thinkElapsed">0s</span></div>
+    </div>
+  </section>
+
+  <!-- ============ ESCENA B: preguntando / finalizado ============ -->
+  <section class="scene scene-board" id="sceneBoard">
+    <img class="art" id="artBoard" alt="">
+
+    <!-- la pizarra: tapa el POYO original y escribe lo nuestro -->
+    <div class="board">
+      <div class="board-title" id="boardTitle">POYO</div>
+      <div class="board-body" id="boardBody"></div>
+    </div>
+
+    <div class="desk" id="deskLine"></div>
+  </section>
+
+  <!-- chip de estado, comun a las dos escenas -->
+  <div class="chip" id="chip"><span class="chip-dot"></span><span id="chipText">en reposo</span></div>
+
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>

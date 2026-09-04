@@ -1,0 +1,737 @@
+/* ===========================================================================
+   Kirby Terminal
+   ---------------------------------------------------------------------------
+   Idea de fondo: de los dibujos originales solo se usan como imagen los
+   RECORTES de Kirby. La pared, la mesa, el suelo y la pizarra son colores y
+   formas de CSS, asi que la escena se estira a cualquier tamano sin que nada
+   se vea borroso — y el terminal cabe de sobra dentro del tablero.
+
+   Colores muestreados pixel a pixel de los dibujos originales.
+   Los PNG de assets/ son los JPG originales reescalados x4 con Real-ESRGAN
+   (modelo de anime) y con el halo del JPEG quitado. Los porcentajes de los
+   recortes siguen siendo los mismos: son relativos, no dependen del tamano.
+   =========================================================================== */
+
+:root {
+  /* -------- paleta de los dibujos -------- */
+  --wall-day:    #c2d9e7;   /* pared, escena pizarra */
+  --desk-day:    #8db9d6;   /* mesa,  escena pizarra */
+  --wall-night:  #1f3fac;   /* pared, escena pensando */
+  --floor-night: #3b7ae4;   /* suelo, escena pensando */
+  --outline:     #10121a;   /* el negro de los contornos */
+  --paper:       #ffffff;
+  --board-ink:   #24365f;
+
+  /* -------- AJUSTES 1: el rectangulo del terminal --------------------------
+     NO cambia entre estados, a proposito: si se moviera o cambiara de tamano,
+     el PTY se redimensionaria en cada herramienta que usa Claude y el TUI se
+     repintaria entero. Aqui solo se mueve el decorado alrededor. */
+  --term-left:   42%;
+  --term-top:    14%;
+  --term-right:   3%;
+  --term-bottom:  6%;
+
+  /* -------- AJUSTES 2: escena PIZARRA -------------------------------------- */
+  --table-y:      66%;    /* donde la pared se encuentra con la mesa */
+  --pointer-w:    40%;    /* ancho del recorte de Kirby con el puntero */
+  --pointer-top:  24%;    /* su borde superior */
+
+  /* -------- AJUSTES 3: escena PENSANDO -------------------------------------
+     El recorte trae dentro su propia linea de horizonte (esta al 75.3% de su
+     alto). Para que encaje con la linea de las bandas:
+         --desk-top = --horizon-y - --desk-h * 0.753
+     Si tocas --desk-h o --horizon-y, recalcula --desk-top con esa formula o
+     Kirby quedara flotando o enterrado en el suelo. */
+  --horizon-y:    44%;    /* donde la pared se encuentra con el suelo */
+  --desk-left:     3%;
+  --desk-top:     22.9%;  /* = 44 - 28*0.753 */
+  --desk-h:       28%;    /* alto del recorte; el ancho sale del aspecto */
+
+  --cloud-left:    9%;
+  --cloud-top:     6%;
+  --cloud-w:      15%;
+  --cloud-h:      13%;
+
+  --note-left:     4%;
+  --note-top:     61%;
+  --note-w:       32%;
+
+  --moon-right:    2%;
+  --moon-top:    1.5%;
+  --moon-h:       11%;
+
+  /* acento por estado */
+  --acc: #6e7681;
+}
+
+body[data-state="thinking"] { --acc: #a371f7; }
+body[data-state="working"]  { --acc: #3d74db; }
+body[data-state="asking"]   { --acc: #e0a11b; }
+body[data-state="done"]     { --acc: #35b45c; }
+
+/* --------------------------------------------------------------------------- */
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body { height: 100%; overflow: hidden; }
+
+body {
+  background: var(--wall-day);
+  font-family: ui-rounded, "SF Pro Rounded", -apple-system, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+  cursor: default;
+}
+
+/* franja superior por la que se arrastra la ventana */
+.drag {
+  position: fixed;
+  inset: 0 0 auto 0;
+  height: 28px;
+  z-index: 50;
+  -webkit-app-region: drag;
+}
+
+.scene { position: relative; width: 100%; height: 100%; overflow: hidden; }
+
+/* ---------------------------------------------------------------------------
+   1. Bandas de color
+   --------------------------------------------------------------------------- */
+.band { position: absolute; left: 0; right: 0; z-index: 0; }
+
+.band-wall  { top: 0; }
+.band-floor { bottom: 0; }
+
+body[data-state="idle"]   .band-wall,
+body[data-state="asking"] .band-wall,
+body[data-state="done"]   .band-wall  { height: var(--table-y); background: var(--wall-day); }
+body[data-state="idle"]   .band-floor,
+body[data-state="asking"] .band-floor,
+body[data-state="done"]   .band-floor { top: var(--table-y); background: var(--desk-day); }
+
+body[data-state="thinking"] .band-wall,
+body[data-state="working"]  .band-wall  { height: var(--horizon-y); background: var(--wall-night); }
+body[data-state="thinking"] .band-floor,
+body[data-state="working"]  .band-floor { top: var(--horizon-y); background: var(--floor-night); }
+
+/* la linea negra donde se juntan, como en los dibujos */
+.band-floor::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 3px;
+  background: var(--outline);
+}
+
+/* ---------------------------------------------------------------------------
+   2. Recortes de los dibujos
+      Truco: background-size y background-position recortan la region que
+      interesa sin generar ficheros nuevos. Para una region de ancho w y alto h
+      (en fracciones del original, empezando en x0,y0):
+          background-size:     (100/w)%  (100/h)%
+          background-position:  x0/(1-w)  y0/(1-h)     (en %)
+      y el contenedor lleva aspect-ratio = (w*ancho_original)/(h*alto_original).
+   --------------------------------------------------------------------------- */
+.cut {
+  position: absolute;
+  z-index: 1;
+  background-repeat: no-repeat;
+  /* Se ocultan con opacidad y no con display para que los dos Kirby se
+     crucen con un fundido al cambiar de escena. */
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity .3s ease, visibility 0s linear .3s;
+}
+
+/* --- Kirby con el puntero: region x 3-50%, y 28-62% del dibujo de la pizarra ---
+   Dos cortes deliberados. Ceñido en vertical porque con la altura completa el
+   70% de la caja era pared vacia y Kirby salia diminuto. Y cortado justo en el
+   50% por la derecha porque el marco negro de la pizarra ORIGINAL empieza en
+   el 50,5%: un pelo mas y se cuela una raya negra al lado del puntero. */
+.cut-pointer {
+  background-image: url("assets/terminal.png");
+  background-size: 212.77% 294.12%;      /* 100/0.47 · 100/0.34 */
+  background-position: 5.66% 42.42%;     /* 0.03/0.53 · 0.28/0.66 */
+  aspect-ratio: 1.3824;                  /* (0.47*236) / (0.34*236) */
+  width: var(--pointer-w);
+  top: var(--pointer-top);
+  left: calc(var(--term-left) - var(--pointer-w));
+}
+
+/* --- Kirby en el portatil: region x 8-96%, y 24.5-71.5% del dibujo de la mesa
+   Antes se cortaba en x 15-95% / y 30-70% y eso partia por la mitad cuatro
+   cosas: el lado izquierdo del portatil, el respaldo de la silla, y por abajo
+   la taza y la caja. Ahora la region abarca los objetos enteros — del borde
+   del portatil (x=171px) al de la caja (x=1690), y de lo alto de la silla
+   (y=455) a la base de la taza (y=1261) — con un dedo de aire alrededor. */
+.cut-desk {
+  background-image: url("assets/thinking.png");
+  background-size: 113.636% 212.766%;    /* 100/0.88 · 100/0.47 */
+  background-position: 66.667% 46.226%;  /* 0.08/0.12 · 0.245/0.53 */
+  aspect-ratio: 1.87234;                 /* 0.88 / 0.47 */
+  height: var(--desk-h);
+  left: var(--desk-left);
+  top: var(--desk-top);
+}
+
+/* Al ensanchar el recorte hacia la izquierda se cuela la esquina de abajo de
+   la ventana de la luna (el rectangulo negro llega hasta x=509, y=572 del
+   dibujo). La ventana ya se pinta aparte en .cut-moon, asi que aqui se tapa
+   con el color plano de la pared: cae justo sobre pared lisa, no hay nada
+   debajo, y el parche viaja con la imagen cuando Kirby respira. */
+.cut-desk::before {
+  content: "";
+  position: absolute;
+  /* Se sale 2px del recorte por arriba y por la izquierda: ahi fuera esta la
+     misma pared plana, y asi no queda la costura de medio pixel del borde. */
+  left: -2px; top: -2px;
+  width:  calc(24.5% + 4px);             /* (509-143)/1573 + margen */
+  height: calc(17.5% + 4px);             /* (572-438)/840  + margen */
+  background: var(--wall-night);
+}
+
+/* --- la ventana con la luna: region x 0-28%, y 0-32% del dibujo de la mesa --- */
+.cut-moon {
+  background-image: url("assets/thinking.png");
+  background-size: 357.14% 312.5%;
+  background-position: 0 0;
+  aspect-ratio: 0.875;                   /* (0.28*447) / (0.32*447) */
+  height: var(--moon-h);
+  right: var(--moon-right);
+  top: var(--moon-top);
+}
+
+body[data-state="idle"]     .cut-pointer,
+body[data-state="asking"]   .cut-pointer,
+body[data-state="done"]     .cut-pointer,
+body[data-state="thinking"] .cut-desk,
+body[data-state="working"]  .cut-desk,
+body[data-state="thinking"] .cut-moon,
+body[data-state="working"]  .cut-moon {
+  opacity: 1;
+  visibility: visible;
+  transition: opacity .3s ease, visibility 0s;
+}
+
+/* ---------------------------------------------------------------------------
+   Movimiento de Kirby. Los recortes son una sola imagen, asi que todo va con
+   transformaciones del conjunto: nada de rotaciones, que moverian tambien la
+   silla y cantan. Solo desplazamientos verticales.
+   --------------------------------------------------------------------------- */
+@keyframes respirar {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-5px); }
+}
+
+/* Tecleo: rapido y de un pixel y medio. Lo justo para que parezca ocupado. */
+@keyframes teclear {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-2px); }
+}
+
+/* "Oye, mirame": dos botes seguidos y una pausa larga. */
+@keyframes insistir {
+  0%, 58%, 100% { transform: translateY(0); }
+  68%           { transform: translateY(-9px); }
+  78%           { transform: translateY(0); }
+  86%           { transform: translateY(-4px); }
+}
+
+.cut-pointer { animation: respirar 3.6s ease-in-out infinite; }
+.cut-desk    { animation: respirar 4.2s ease-in-out infinite; }
+
+body[data-state="asking"]  .cut-pointer { animation: insistir 2.6s ease-in-out infinite; }
+body[data-state="working"] .cut-desk    { animation: teclear  .38s ease-in-out infinite; }
+
+/* ---------------------------------------------------------------------------
+   3. Nube de pensamiento
+   --------------------------------------------------------------------------- */
+.bub, .cloud { z-index: 2; display: none; }
+
+body[data-state="thinking"] .bub,
+body[data-state="working"]  .bub { display: block; }
+
+body[data-state="thinking"] .cloud,
+body[data-state="working"]  .cloud { display: grid; }
+
+.bub {
+  position: absolute;
+  background: var(--paper);
+  border: 3px solid var(--outline);
+  border-radius: 50%;
+  opacity: 0;
+  animation: rise 2.4s ease-in-out infinite;
+}
+/* Suben desde la cabeza de Kirby (≈18%, 33%) hacia la nube. */
+.bub1 { left: 17%;   top: 29.5%; width: 1.1%; aspect-ratio: 1; }
+.bub2 { left: 15.5%; top: 26%;   width: 1.5%; aspect-ratio: 1; animation-delay: .22s; }
+.bub3 { left: 13.5%; top: 22%;   width: 2%;   aspect-ratio: 1; animation-delay: .44s; }
+
+@keyframes rise {
+  0%        { opacity: 0; transform: translateY(10px) scale(.55); }
+  22%, 62%  { opacity: 1; transform: translateY(0)    scale(1);   }
+  85%, 100% { opacity: 0; transform: translateY(-7px) scale(.9);  }
+}
+
+.cloud {
+  position: absolute;
+  left: var(--cloud-left);
+  top:  var(--cloud-top);
+  width:  var(--cloud-w);
+  height: var(--cloud-h);
+  background: var(--paper);
+  border: 4px solid var(--outline);
+  border-radius: 50% / 46%;
+  place-items: center;
+  animation: bob 3.4s ease-in-out infinite;
+}
+@keyframes bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
+
+.dots { display: flex; gap: 9px; }
+.dots i {
+  width: 12px; height: 12px; border-radius: 50%;
+  background: var(--acc);
+  animation: think 1.25s ease-in-out infinite;
+}
+.dots i:nth-child(2) { animation-delay: .16s; }
+.dots i:nth-child(3) { animation-delay: .32s; }
+@keyframes think {
+  0%, 70%, 100% { transform: translateY(0)   scale(1);    opacity: .45; }
+  35%           { transform: translateY(-7px) scale(1.25); opacity: 1;  }
+}
+
+/* ---------------------------------------------------------------------------
+   4. La nota con lo que esta haciendo. Solo en las escenas de pensar, que es
+      cuando el terminal no lo cuenta todavia.
+   --------------------------------------------------------------------------- */
+.note {
+  position: absolute;
+  z-index: 2;
+  left:  var(--note-left);
+  top:   var(--note-top);
+  width: var(--note-w);
+  padding: 12px 14px;
+  background: var(--paper);
+  border: 4px solid var(--outline);
+  border-radius: 16px;
+  display: none;
+  flex-direction: column;
+  gap: 5px;
+}
+body[data-state="thinking"] .note,
+body[data-state="working"]  .note { display: flex; }
+
+.note-line {
+  font-family: "SF Mono", "JetBrains Mono", Menlo, ui-monospace, monospace;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--board-ink);
+  overflow-wrap: anywhere;
+}
+.note-meta {
+  font-size: 12px;
+  color: #6a8ad6;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------------------------------------------------------------------------
+   5. La pizarra — aqui dentro va el terminal de verdad
+   --------------------------------------------------------------------------- */
+.board {
+  position: absolute;
+  z-index: 3;
+  left:   var(--term-left);
+  top:    var(--term-top);
+  right:  var(--term-right);
+  bottom: var(--term-bottom);
+  background: var(--paper);
+  border: 9px solid var(--outline);
+  border-radius: 20px;
+  padding: 14px 16px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* En la escena de pensar deja de ser pizarra colgada de la pared y pasa a ser
+   una pantalla apoyada en la mesa: misma caja, sombra distinta. */
+body[data-state="thinking"] .board,
+body[data-state="working"]  .board { box-shadow: 0 14px 0 -4px rgba(8, 24, 64, .35); }
+
+body[data-state="asking"] .board { animation: pulse 1.5s ease-in-out infinite; }
+@keyframes pulse {
+  0%, 100% { box-shadow: 0 0 0 0    rgba(224, 161, 27, 0);   }
+  50%      { box-shadow: 0 0 0 10px rgba(224, 161, 27, .55); }
+}
+
+/* Los terminales se apilan aqui dentro; solo se ve el de la pestana activa. */
+.board-inner { position: relative; flex: 1 1 auto; min-height: 0; width: 100%; }
+
+.pane { position: absolute; inset: 0; visibility: hidden; }
+.pane.on { visibility: visible; }
+
+/* ---------------------------------------------------------------------------
+   5b. Pestanas — misma anatomia que las de Chrome: una tira de fondo mas
+   oscuro, las pestanas apoyadas en ella y la activa fundida con el terminal
+   de abajo mediante las dos curvas concavas de sus esquinas.
+   --------------------------------------------------------------------------- */
+.tabs {
+  --strip:      #cfdcf2;   /* la tira donde descansan las pestanas */
+  --tab-on:     var(--paper);
+  --tab-ink:    #24365f;
+  --tab-ink-off:#51648f;
+  --tab-hover:  rgba(255, 255, 255, .55);
+  --sep:        rgba(36, 54, 95, .22);   /* la rayita entre pestanas */
+
+  flex: 0 0 auto;
+  display: flex;
+  align-items: flex-end;
+  gap: 0;
+  height: 46px;
+  margin: -14px -16px 0;         /* se pega a los bordes de la pizarra */
+  padding: 7px 8px 0;
+  background: var(--strip);
+  border-radius: 12px 12px 0 0;  /* casa con el redondeo interior del marco */
+  -webkit-app-region: drag;      /* el hueco de la derecha arrastra, como en Chrome */
+}
+
+.tabs-list {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: flex-end;
+  min-width: 0;
+  overflow: hidden;
+  -webkit-app-region: drag;   /* el hueco sobrante arrastra la ventana */
+}
+
+.tab {
+  position: relative;
+  flex: 1 1 240px;      /* como en Chrome: 240px cuando caben, y encogen a la vez */
+  min-width: 56px;
+  max-width: 260px;
+  height: 39px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 7px 0 12px;
+  background: transparent;
+  border: 0;
+  border-radius: 10px 10px 0 0;
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--tab-ink-off);
+  cursor: default;
+  -webkit-app-region: no-drag;
+}
+
+/* La rayita separadora entre pestanas apagadas, como la de Chrome. Lleva
+   :not(.on) porque la ::before de la activa es su esquina curva, no una raya. */
+.tab + .tab:not(.on)::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 1px;
+  height: 16px;
+  transform: translateY(-50%);
+  background: var(--sep);
+}
+.tab:hover:not(.on)::before,
+.tab:hover + .tab:not(.on)::before,
+.tab.on + .tab:not(.on)::before { background: transparent; }
+
+.tab:hover { background: var(--tab-hover); }
+
+.tab.on {
+  background: var(--tab-on);
+  color: var(--tab-ink);
+  font-weight: 600;
+  z-index: 2;
+}
+
+/* las dos esquinas concavas: es lo que funde la pestana activa con el terminal */
+.tab.on::before,
+.tab.on::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  width: 10px;
+  height: 10px;
+  background: transparent;
+  transform: none;
+  pointer-events: none;
+}
+.tab.on::before {
+  left: -10px;
+  top: auto;
+  background: radial-gradient(circle at 0 0, transparent 10px, var(--tab-on) 10.5px);
+}
+.tab.on::after {
+  right: -10px;
+  background: radial-gradient(circle at 100% 0, transparent 10px, var(--tab-on) 10.5px);
+}
+
+/* el hueco del favicon */
+.tab-fav {
+  flex: 0 0 auto;
+  width: 13px; height: 13px;
+  border-radius: 50%;
+  background: var(--acc);
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, .5) inset;
+}
+
+.tab-name {
+  flex: 1 1 auto;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 14px), transparent);
+}
+
+.tab-x {
+  position: relative;
+  flex: 0 0 auto;
+  width: 20px; height: 20px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  font-family: inherit;
+  font-size: 0;               /* el aspa se dibuja abajo, no es texto */
+  line-height: 0;
+  color: inherit;
+  cursor: default;
+  opacity: 0;
+  transition: background .1s ease, opacity .1s ease;
+}
+
+.tab-x::before,
+.tab-x::after {
+  content: "";
+  position: absolute;
+  top: 50%; left: 50%;
+  width: 9px;
+  height: 1.6px;
+  border-radius: 2px;
+  background: currentColor;
+}
+.tab-x::before { transform: translate(-50%, -50%) rotate(45deg); }
+.tab-x::after  { transform: translate(-50%, -50%) rotate(-45deg); }
+.tab:hover .tab-x, .tab.on .tab-x { opacity: .85; }
+.tab-x:hover { background: rgba(36, 54, 95, .14); opacity: 1; }
+
+/* pestanas estrechas: Chrome esconde primero el aspa y luego el titulo */
+.tab { container-type: inline-size; }
+@container (max-width: 128px) { .tab:not(.on) .tab-x { display: none; } }
+@container (max-width: 78px)  { .tab .tab-name { display: none; } }
+
+/* con una sola pestana el aspa sobra: cerrarla es cerrar la ventana */
+.tabs.solo .tab-x { display: none; }
+
+.tab-new {
+  flex: 0 0 auto;
+  width: 30px; height: 30px;
+  margin: 0 0 4px 5px;
+  display: grid;
+  place-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: 50%;
+  font-family: inherit;
+  font-size: 18px;
+  font-weight: 400;
+  line-height: 1;
+  color: var(--tab-ink);
+  cursor: default;
+  -webkit-app-region: no-drag;
+  transition: background .12s ease;
+}
+.tab-new:hover  { background: var(--tab-hover); }
+.tab-new:active { background: rgba(36, 54, 95, .16); }
+
+/* --- los botones del fondo de la tira: mi GitHub y el dia/noche --- */
+.tab-side {
+  flex: 0 0 auto;
+  width: 30px; height: 30px;
+  margin: 0 0 4px 2px;
+  display: grid;
+  place-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: 50%;
+  color: var(--tab-ink);
+  cursor: default;
+  -webkit-app-region: no-drag;
+  transition: background .12s ease;
+}
+.tab-side:hover  { background: var(--tab-hover); }
+.tab-side:active { background: rgba(36, 54, 95, .16); }
+.tab-mode        { margin-right: 2px; }
+.tab-gh          { margin-left: 6px; }
+
+.ico-gh {
+  width: 16px; height: 16px;
+  fill: currentColor;
+  stroke: none;
+  transition: transform .15s ease;
+}
+.tab-gh:hover .ico-gh { transform: scale(1.1); }
+
+.ico {
+  grid-area: 1 / 1;
+  width: 17px; height: 17px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  transition: transform .25s ease, opacity .2s ease;
+}
+/* de dia se ofrece la luna, de noche el sol: el icono dice a donde vas */
+.ico-sun  { opacity: 0; transform: rotate(-70deg) scale(.5); }
+.ico-moon { opacity: 1; transform: none; }
+body.night .ico-sun  { opacity: 1; transform: none; }
+body.night .ico-moon { opacity: 0; transform: rotate(70deg) scale(.5); }
+
+/* xterm se pinta dentro sin decoracion propia */
+.xterm .xterm-viewport { background: transparent !important; }
+.xterm-viewport::-webkit-scrollbar { width: 8px; }
+.xterm-viewport::-webkit-scrollbar-thumb {
+  background: #c9d6ee;
+  border-radius: 8px;
+}
+
+/* ---------------------------------------------------------------------------
+   6. Chip de estado
+   --------------------------------------------------------------------------- */
+.chip {
+  position: absolute;
+  z-index: 4;
+  left: var(--note-left);
+  top: calc(var(--note-top) - 6%);       /* justo encima de la nota */
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 13px;
+  background: var(--paper);
+  border: 3px solid var(--outline);
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--board-ink);
+  white-space: nowrap;
+}
+body[data-state="idle"]   .chip,
+body[data-state="asking"] .chip,
+body[data-state="done"]   .chip { display: none; }   /* ahi abajo esta Kirby */
+
+.chip-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--acc); }
+body[data-state="thinking"] .chip-dot,
+body[data-state="working"]  .chip-dot { animation: blink 1.1s ease-in-out infinite; }
+@keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: .25; } }
+
+/* ---------------------------------------------------------------------------
+   7. Intro automatico — pulsa enter en el terminal cada X segundos
+      Va justo encima del borde de la pizarra, en el hueco de la pared, y por
+      encima de la franja de arrastre (de ahi el no-drag y el z-index 60).
+   --------------------------------------------------------------------------- */
+.auto {
+  position: absolute;
+  z-index: 60;
+  left: var(--term-left);
+  top: calc(var(--term-top) - 40px);
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 4px 8px 4px 4px;
+  background: var(--paper);
+  border: 3px solid var(--outline);
+  border-radius: 999px;
+  color: var(--board-ink);
+  font-size: 12px;
+  font-weight: 700;
+  -webkit-app-region: no-drag;
+}
+
+.auto button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.auto-go {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 11px;
+  background: #eef3fc;
+}
+.auto-go:hover { background: #dfe8fa; }
+
+.auto-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: #c2ccdd;
+}
+.auto-key { font-size: 13px; line-height: 1; }
+
+/* Encendido: el boton se pinta del color del estado y el punto parpadea. */
+.auto.on .auto-go  { background: var(--acc); color: var(--paper); }
+.auto.on .auto-dot { background: var(--paper); animation: blink 1.1s ease-in-out infinite; }
+
+/* Un guino en el momento exacto en que se manda el intro. */
+.auto.fire .auto-go { animation: fire .45s ease-out; }
+@keyframes fire {
+  0%   { transform: scale(1);    box-shadow: 0 0 0 0   rgba(61, 116, 219, .5); }
+  35%  { transform: scale(1.12); box-shadow: 0 0 0 7px rgba(61, 116, 219, 0);  }
+  100% { transform: scale(1);    box-shadow: 0 0 0 0   rgba(61, 116, 219, 0);  }
+}
+
+.auto-step {
+  width: 19px; height: 19px;
+  line-height: 1;
+  background: #eef3fc;
+}
+.auto-step:hover { background: #dfe8fa; }
+
+.auto-secs {
+  min-width: 34px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+body.night .auto      { background: #0f1626; color: #dfe7f5; }
+body.night .auto-go,
+body.night .auto-step { background: #1d2a45; }
+body.night .auto-go:hover,
+body.night .auto-step:hover { background: #2a3a63; }
+body.night .auto.on .auto-go { background: var(--acc); color: #0f1626; }
+
+@media (prefers-reduced-motion: reduce) {
+  .bub, .cloud, .dots i, .chip-dot, .board, .cut,
+  .auto-dot, .auto-go { animation: none !important; }
+  .tab, .tab-new, .tab-side, .ico, .ico-gh { transition: none; }
+  .cut { transition: none; }
+}
+
+/* ---------------------------------------------------------------------------
+   Modo noche  (Cmd+Shift+N). Solo cambia la PIZARRA del terminal: la escena de
+   Kirby, la nota y el chip se quedan como estan. El fondo casa con THEME_DARK.
+   --------------------------------------------------------------------------- */
+body.night .board { background: #0f1626; }
+body.night .tabs {
+  --strip:      #070c17;
+  --tab-on:     #0f1626;
+  --tab-ink:    #ffffff;
+  --tab-ink-off:#9fb0d0;
+  --tab-hover:  rgba(255, 255, 255, .09);
+  --sep:        rgba(223, 231, 245, .18);
+}
+body.night .tab-x:hover  { background: rgba(255, 255, 255, .16); }
+body.night .tab-new:active,
+body.night .tab-side:active { background: rgba(255, 255, 255, .18); }
+body.night .xterm-viewport::-webkit-scrollbar-thumb { background: #2a3a63; }
