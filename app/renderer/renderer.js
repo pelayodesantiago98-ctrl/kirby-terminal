@@ -172,7 +172,11 @@ function newTab(fromId) {
     retitular(tab);
   });
 
-  term.onData((data) => window.kirby.write(id, data));
+  // Teclear en la pestana es haberla visto: el aviso se apaga.
+  term.onData((data) => {
+    calmar(tab);
+    window.kirby.write(id, data);
+  });
 
   // Se activa antes de arrancar el PTY: el panel tiene que estar a la vista
   // para que fit() mida bien las columnas.
@@ -193,6 +197,9 @@ function activate(id) {
     t.pane.classList.toggle('on', on);
     t.chip.classList.toggle('on', on);
   }
+
+  // Si la ventana esta delante, activarla es haberla mirado.
+  if (document.hasFocus()) calmar(tab);
 
   // Estaba oculto, asi que sus medidas estaban congeladas: se recalculan.
   resize();
@@ -319,6 +326,42 @@ const elapsed  = document.getElementById('elapsed');
 
 let since = Date.now() / 1000;
 
+// Estados que piden tu atencion: ha terminado, o quiere preguntarte algo.
+const AVISAN = new Set(['done', 'asking']);
+
+// A que pestana pertenece este estado. Los shells de la app llevan KIRBY_TAB en
+// el entorno, asi que el hook dice de quien es y el proceso principal lo
+// traduce a tabId. Si no viene (un Claude lanzado desde fuera, o un hud.py
+// viejo) damos por hecho que es el de la pestana a la vista.
+function rutaDe(s) {
+  if (s.tabId != null) return byId(s.tabId);
+  return active;
+}
+
+// El acento de la pestana pasa a ser el de SU estado, no el de la ventana.
+function pintarEstado(tab, state) {
+  tab.state = state;
+  tab.chip.dataset.state = state;
+}
+
+function avisar(tab) {
+  if (!tab || tab.aviso) return;
+  tab.aviso = true;
+  tab.chip.classList.add('aviso');
+}
+
+function calmar(tab) {
+  if (!tab || !tab.aviso) return;
+  tab.aviso = false;
+  tab.chip.classList.remove('aviso');
+}
+
+// La primera lectura es el estado que quedo en disco de la vez anterior: pinta,
+// pero no parpadea. Y de las siguientes solo avisan las que traen novedad (rev
+// sube con cada escritura de hud.py).
+let primera = true;
+let ultimoRev = null;
+
 function render(s) {
   const state = s.state || 'idle';
   document.body.dataset.state = state;
@@ -326,7 +369,25 @@ function render(s) {
   noteLine.textContent = s.line || 'Pensando';
   since = s.since || Date.now() / 1000;
   tick();
+
+  const nuevo = !primera && s.rev !== ultimoRev;
+  primera = false;
+  ultimoRev = s.rev;
+
+  const tab = rutaDe(s);
+  if (!tab) return;
+
+  pintarEstado(tab, state);
+
+  if (!AVISAN.has(state)) {
+    calmar(tab);               // volvio a trabajar: ya no espera nada de ti
+  } else if (nuevo && (tab !== active || !document.hasFocus())) {
+    avisar(tab);               // si la tienes delante no hace falta parpadeo
+  }
 }
+
+// Volver a la ventana es mirar la pestana que este puesta.
+addEventListener('focus', () => calmar(active));
 
 function tick() {
   const secs = Math.max(0, Math.floor(Date.now() / 1000 - since));
@@ -458,7 +519,15 @@ addEventListener('keydown', (e) => {
     e.preventDefault();
     const all = Object.keys(CHIP);
     const i = (all.indexOf(document.body.dataset.state) + 1) % all.length;
-    render({ state: all[i], line: 'modo prueba · cmd+shift+P rota', since: Date.now() / 1000 });
+    render({
+      state: all[i],
+      line: 'modo prueba · cmd+shift+P rota',
+      since: Date.now() / 1000,
+      rev: (ultimoRev || 0) + 1,
+    });
+    // En la prueba tienes la ventana delante, asi que el parpadeo no saltaria
+    // solo: aqui se fuerza para poder verlo.
+    if (AVISAN.has(all[i])) avisar(active);
   }
 });
 

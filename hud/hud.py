@@ -32,6 +32,7 @@ DEFAULT = {
     "title": "POYO",
     "body": "",
     "desk": "",
+    "tab": "",
     "since": 0.0,
 }
 
@@ -165,6 +166,11 @@ def run_hook(state):
         ev = {}
 
     patch = {"state": state, "since": time.time()}
+
+    # Sello de la pestana de Kirby Terminal donde corre este Claude. Lo pone la
+    # app en el entorno del shell y se hereda hasta aqui; fuera de la app viene
+    # vacio y la ventana se apana con la pestana que este a la vista.
+    patch["tab"] = os.environ.get("KIRBY_TAB", "")
 
     cwd = ev.get("cwd") or ""
     if cwd:

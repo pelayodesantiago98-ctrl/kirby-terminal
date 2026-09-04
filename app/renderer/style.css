@@ -472,14 +472,48 @@ body[data-state="asking"] .board { animation: pulse 1.5s ease-in-out infinite; }
   background: radial-gradient(circle at 100% 0, transparent 10px, var(--tab-on) 10.5px);
 }
 
-/* el hueco del favicon */
+/* El favicon: la carita de Kirby, tenida con el color del estado.
+   Van dos capas sobre el mismo dibujo: abajo la imagen tal cual, y encima el
+   acento en modo 'color', que se queda con el tono de arriba y con la luz de
+   abajo. Asi el trazo negro y los ojos siguen negros (luz cero) y solo cambia
+   el relleno del cuerpo. La mascara recorta el tinte al contorno para que no
+   pinte el cuadrado entero, y el isolation deja la mezcla dentro del hueco. */
 .tab-fav {
+  position: relative;
   flex: 0 0 auto;
-  width: 13px; height: 13px;
-  border-radius: 50%;
-  background: var(--acc);
-  box-shadow: 0 0 0 2px rgba(255, 255, 255, .5) inset;
+  width: 19px; height: 19px;
+  isolation: isolate;
+  filter: saturate(1.45);      /* de tan pequenos, los pasteles se parecen */
 }
+
+.tab-fav::before,
+.tab-fav::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: contain;
+}
+
+.tab-fav::before { background-image: url("assets/kirby-icon.png"); }
+
+.tab-fav::after {
+  background-color: var(--acc);
+  mix-blend-mode: color;
+  -webkit-mask-image: url("assets/kirby-icon.png");
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  -webkit-mask-size: contain;
+}
+
+/* Cada pestana lleva su propio estado (se lo cuenta el hook por KIRBY_TAB), y
+   con el su acento. Las que no tienen noticias heredan el de la ventana. */
+.tab[data-state="thinking"] { --acc: #a371f7; }
+.tab[data-state="working"]  { --acc: #3d74db; }
+.tab[data-state="asking"]   { --acc: #e0a11b; }
+.tab[data-state="done"]     { --acc: #35b45c; }
+.tab[data-state="idle"]     { --acc: #6e7681; }
 
 .tab-name {
   flex: 1 1 auto;
@@ -529,6 +563,31 @@ body[data-state="asking"] .board { animation: pulse 1.5s ease-in-out infinite; }
 
 /* con una sola pestana el aspa sobra: cerrarla es cerrar la ventana */
 .tabs.solo .tab-x { display: none; }
+
+/* ---------------------------------------------------------------------------
+   Aviso: la pestana parpadea cuando Claude termina o te pregunta, y para en
+   cuanto la miras (la activas con la ventana delante o escribes en ella).
+   Hay dos parpadeos porque el fondo de partida no es el mismo en la pestana
+   activa (blanca) que en las demas (transparente).
+   --------------------------------------------------------------------------- */
+.tab.aviso        { animation: aviso-off 1.1s ease-in-out infinite; }
+.tab.on.aviso     { animation: aviso-on  1.1s ease-in-out infinite; }
+.tab.aviso .tab-fav { animation: aviso-fav 1.1s ease-in-out infinite; }
+
+@keyframes aviso-off {
+  0%, 100% { background-color: transparent; }
+  50%      { background-color: color-mix(in srgb, var(--acc) 40%, transparent); }
+}
+
+@keyframes aviso-on {
+  0%, 100% { background-color: var(--tab-on); }
+  50%      { background-color: color-mix(in srgb, var(--acc) 30%, var(--tab-on)); }
+}
+
+@keyframes aviso-fav {
+  0%, 100% { transform: scale(1);    opacity: 1; }
+  50%      { transform: scale(1.22); opacity: .75; }
+}
 
 .tab-new {
   flex: 0 0 auto;
@@ -714,6 +773,10 @@ body.night .auto.on .auto-go { background: var(--acc); color: #0f1626; }
 @media (prefers-reduced-motion: reduce) {
   .bub, .cloud, .dots i, .chip-dot, .board, .cut,
   .auto-dot, .auto-go { animation: none !important; }
+  /* sin parpadeo, pero el aviso se sigue viendo: la pestana se queda tenida */
+  .tab.aviso, .tab.on.aviso, .tab.aviso .tab-fav { animation: none !important; }
+  .tab.aviso    { background-color: color-mix(in srgb, var(--acc) 30%, transparent); }
+  .tab.on.aviso { background-color: color-mix(in srgb, var(--acc) 22%, var(--tab-on)); }
   .tab, .tab-new, .tab-side, .ico, .ico-gh { transition: none; }
   .cut { transition: none; }
 }

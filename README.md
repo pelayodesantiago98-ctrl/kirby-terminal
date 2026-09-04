@@ -198,6 +198,42 @@ Cada pestaña es **un terminal y un PTY de verdad**, no una vista partida:
   de contextos: cuando tira uno, ese terminal suelta el addon y sigue pintando
   por el camino normal (`onContextLoss`).
 
+### El favicon: la carita de Kirby, teñida por el estado
+
+El icono redondo de cada pestaña es el
+[icono de Kirby](https://commons.wikimedia.org/wiki/File:Kirby_Icon.png)
+(`renderer/assets/kirby-icon.png`), y **cambia de color según lo que esté
+haciendo esa pestaña**: gris en reposo, morado pensando, azul trabajando,
+ámbar cuando te pregunta y verde cuando ha terminado.
+
+No es un icono por estado ni un filtro de tono: son **dos capas sobre el mismo
+dibujo**. Debajo, la imagen tal cual; encima, el color del acento recortado con
+la misma imagen como máscara y mezclado en `mix-blend-mode: color`, que se
+queda con el **tono** de arriba y con la **luz** de abajo. Así el trazo negro y
+los ojos siguen negros (luz cero) y solo se tiñe el relleno del cuerpo. El
+`isolation: isolate` del hueco impide que la mezcla se coma el fondo de la
+pestaña.
+
+### Parpadeo: cada pestaña sabe cuál es su Claude
+
+Cuando Claude **termina** (`Stop`) o **te pregunta** (`Notification`), su
+pestaña **parpadea** hasta que la miras: se tiñe y se destiñe con su color y
+Kirby late con ella. Se calma sola al activarla con la ventana delante, al
+volver a la ventana si ya estaba puesta, al teclear en ella, o en cuanto Claude
+vuelve al tajo.
+
+Para saber **de qué pestaña** viene el aviso, el proceso principal arranca cada
+shell con `KIRBY_TAB=<pid de la app>:<id de pestaña>` en el entorno. Los hooks
+de Claude Code heredan esa variable, `hud.py` la copia al `state.json` y la
+ventana la traduce de vuelta a una pestaña. El PID delante evita que un Kirby
+Terminal se crea suyos los avisos de otro abierto a la vez; si la marca no
+viene (un `claude` lanzado desde otro terminal, o un `hud.py` viejo), el aviso
+se le atribuye a la pestaña que esté a la vista.
+
+Con eso, además, **cada pestaña lleva su propio color**: la escena grande sigue
+el último estado que haya llegado, pero la tira te dice de un vistazo cuál de
+los tres Claude que tienes abiertos es el que te está esperando.
+
 **Hace falta menú propio.** El de serie de Electron se queda con `Cmd W`
 (cerraría la ventana entera en vez de la pestaña) y con `Cmd +/-` (haría zoom
 de la página en vez de cambiar el cuerpo de letra). Los aceleradores de menú
@@ -313,6 +349,13 @@ vendido. Están aquí porque este proyecto entero nació de ellos.
 
 Afecta a `app/renderer/assets/`, `hud/assets/` y a todo lo de `preview/`, que
 son recortes y escalados de esas mismas dos imágenes.
+
+El **icono redondo de las pestañas** (`app/renderer/assets/kirby-icon.png`) es
+otra cosa: es
+[`Kirby_Icon.png` de Wikimedia Commons](https://commons.wikimedia.org/wiki/File:Kirby_Icon.png),
+descargado de ahí y sin retocar — el color se le pone en el CSS, no en el
+fichero. Kirby es de Nintendo / HAL Laboratory; esto es un juguete personal que
+no se vende.
 
 **Si el autor eres tú, o sabes quién es:** abre un issue y lo acredito con
 nombre y enlace encantado — o los quito del repositorio si lo prefieres, sin

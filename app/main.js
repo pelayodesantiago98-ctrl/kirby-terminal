@@ -17,6 +17,12 @@ let win = null;
 // Un PTY por pestana, indexado por el id que reparte la ventana.
 const ptys = new Map();
 
+// Firma de esta ejecucion. Cada shell nace con KIRBY_TAB=<firma>:<id> en el
+// entorno; los hooks de Claude Code heredan esa variable y hud.py la copia al
+// estado, asi que sabemos de que pestana viene cada aviso. La firma evita que
+// un Kirby Terminal se crea suyos los avisos de otro que este abierto a la vez.
+const FIRMA = String(process.pid);
+
 // ---------------------------------------------------------------------------
 // Ventana
 // ---------------------------------------------------------------------------
@@ -154,7 +160,12 @@ function startPty(id, cols, rows, fromId) {
     cols: cols || 100,
     rows: rows || 30,
     cwd: donde,
-    env: { ...process.env, TERM: 'xterm-256color', TERM_PROGRAM: 'KirbyTerminal' },
+    env: {
+      ...process.env,
+      TERM: 'xterm-256color',
+      TERM_PROGRAM: 'KirbyTerminal',
+      KIRBY_TAB: `${FIRMA}:${id}`,
+    },
   });
 
   // La ventana bautiza la pestana con el nombre de esta carpeta, hasta que el
@@ -213,12 +224,25 @@ ipcMain.on('win:close', () => { if (win && !win.isDestroyed()) win.close(); });
 // Estado de Claude
 // ---------------------------------------------------------------------------
 
+// De KIRBY_TAB al id de pestana, o null si el aviso no es de esta ventana
+// (otro Kirby Terminal, un Claude lanzado desde fuera, o un hud.py viejo).
+function pestanaDe(marca) {
+  if (typeof marca !== 'string') return null;
+  const corte = marca.indexOf(':');
+  if (corte < 0 || marca.slice(0, corte) !== FIRMA) return null;
+  const id = Number(marca.slice(corte + 1));
+  return Number.isInteger(id) && id > 0 ? id : null;
+}
+
 function readState() {
+  let s;
   try {
-    return JSON.parse(fs.readFileSync(STATE_FILE, 'utf8'));
+    s = JSON.parse(fs.readFileSync(STATE_FILE, 'utf8'));
   } catch {
-    return { state: 'idle', line: 'esperando', title: 'POYO', body: '', desk: '', rev: 0 };
+    s = { state: 'idle', line: 'esperando', title: 'POYO', body: '', desk: '', rev: 0 };
   }
+  s.tabId = pestanaDe(s.tab);
+  return s;
 }
 
 function pushState() {
