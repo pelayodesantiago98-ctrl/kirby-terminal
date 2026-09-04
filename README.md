@@ -45,6 +45,9 @@ debajo de él cuando está en el escritorio.
 
 ## Los dibujos
 
+> Los dibujos de Kirby **no son míos**: salieron de Pinterest y no he dado con
+> el autor original. Ver [Créditos](#créditos) al final.
+
 Los JPG originales medían 236×236 y 447×447 px. Los de `assets/` son
 **reescalados ×4 con Real-ESRGAN**, modelo `x4plus_anime_6B` — el que está
 entrenado para arte plano con contornos gruesos, que es exactamente esto. En
@@ -297,3 +300,26 @@ claude-term-mac/
 
 `hud/` sigue haciendo falta aunque uses la app: ahí vive el puente de los
 hooks. Lo que ya no necesitas es `start.sh` ni el servidor HTTP.
+
+---
+
+## Créditos
+
+**Los dibujos de Kirby los saqué de Pinterest y no he conseguido averiguar
+quién es el autor original.** Las mismas dos imágenes circulan repinneadas una
+y otra vez sin firma y sin enlace a la fuente, y siguiendo el rastro no se
+llega a ninguna parte. No son míos, no los reclamo y no los he pagado ni
+vendido. Están aquí porque este proyecto entero nació de ellos.
+
+Afecta a `app/renderer/assets/`, `hud/assets/` y a todo lo de `preview/`, que
+son recortes y escalados de esas mismas dos imágenes.
+
+**Si el autor eres tú, o sabes quién es:** abre un issue y lo acredito con
+nombre y enlace encantado — o los quito del repositorio si lo prefieres, sin
+discusión y sin que haya que pedirlo dos veces.
+
+Kirby es una creación de HAL Laboratory y una marca de Nintendo. Esto es un
+proyecto personal, sin ánimo de lucro y sin ninguna relación con ellos.
+
+El **código** es MIT: haz con él lo que quieras. Esa licencia cubre el código y
+**no** los dibujos, por todo lo anterior.
