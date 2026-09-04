@@ -477,6 +477,203 @@ function setFontSize(px) {
   resize();
 }
 
+/* ---------------------------------------------------------------------------
+   La lluvia de kirbys
+   Empieza con la terminal y ya no para: cada dos por tres se suelta uno, que
+   baja despacio balanceandose de su sombrilla y se apaga al llegar abajo. El
+   tope de cuantos hay a la vez se vuelve a echar a suertes en cada intento
+   entre MIN_CAYENDO y MAX_CAYENDO, asi que la cantidad va y viene sola en vez
+   de quedarse clavada. cmd+shift+K suelta uno en el momento.
+   --------------------------------------------------------------------------- */
+const rain = document.getElementById('rain');
+const MIN_CAYENDO = 3;
+const MAX_CAYENDO = 8;
+
+function soltarKirby(forzar) {
+  if (!rain) return;
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const tope = MIN_CAYENDO + Math.floor(Math.random() * (MAX_CAYENDO - MIN_CAYENDO + 1));
+  if (!forzar && rain.childElementCount >= tope) return;
+  if (rain.childElementCount >= MAX_CAYENDO) return;
+
+  const ancho = rain.clientWidth  || 640;
+  const alto  = rain.clientHeight || 420;
+  const s = 14 + Math.round(Math.random() * 6);              // el cuerpo
+  const centro = s / 2 + Math.random() * Math.max(1, ancho - s);
+  const dur = 7 + Math.random() * 3;                         // muy despacio
+
+  const k = document.createElement('div');
+  k.className = 'rain-k';
+  k.style.setProperty('--alto', (alto + 220) + 'px');        // desde donde cae
+  k.style.setProperty('--x', Math.round(centro - s * LIENZO_CENTRO) + 'px');
+  k.style.setProperty('--s', s + 'px');
+  k.style.setProperty('--dur', dur.toFixed(2) + 's');
+  // el balanceo: cada uno con su ritmo, y empezado por un punto distinto para
+  // que no vayan todos a la vez como un metronomo
+  const vaiven = 2.4 + Math.random() * 1.8;
+  k.style.setProperty('--vaiven', vaiven.toFixed(2) + 's');
+  k.style.setProperty('--vdelay', (-Math.random() * vaiven).toFixed(2) + 's');
+  k.appendChild(document.createElement('i'));                // la capa que oscila
+  k.addEventListener('animationend', (e) => {                // llego y se apago
+    if (e.target === k) k.remove();
+  });
+  rain.appendChild(k);
+}
+
+function lloverSinParar() {
+  if (!rain) return;
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  rain.classList.add('on');
+  soltarKirby();
+  setTimeout(lloverSinParar, 1200 + Math.random() * 2300);
+}
+
+/* ---------------------------------------------------------------------------
+   La raya de encima de la caja de texto, y los kirbys que se apoyan en ella
+
+   La raya vive abajo del todo de la pizarra, justo por encima de donde escribes.
+   Se dibuja de izquierda a derecha al abrir, y se vuelve a dibujar cada vez que
+   hay que cerrar una caida.
+
+   Encima de ella se van asomando kirbys: tres a la vez como mucho, y cada pocos
+   segundos a uno le toca irse y volver en otro sitio, asi la fila rota sola y
+   nunca aparecen dos veces igual. Hay una segunda percha arriba, en el trozo de
+   la tira de pestanas que queda libre: si no cabe, no sale nadie.
+   --------------------------------------------------------------------------- */
+const perch = document.getElementById('perch');   // en el suelo de la pizarra
+const roost = document.getElementById('roost');   // en el hueco sin pestanas
+// Todos normalizados al mismo lienzo, con el cuerpo de Kirby del mismo tamano
+// en los cinco; lo que se sale del lienzo son los trastos que lleve cada uno.
+const KIRBYS_GIF = [
+  'assets/kirbys/k1.webp',
+  'assets/kirbys/k2.webp',
+  'assets/kirbys/k3.webp',
+  'assets/kirbys/k4.webp',
+];
+
+// Los dos sentados con el mando: solo salen encima del chip de "pensando".
+const KIRBYS_SENTADOS = ['assets/kirbys/sentado.webp'];
+
+// Del alto de Kirby a su lienzo: ancho, y cuanto hay de su centro al borde.
+const LIENZO_CENTRO = 2.55;
+
+// Lo que aguanta uno antes de irse y dejar sitio a otro. Es a proposito tan
+// largo: son parte del decorado, no una animacion que pedir a gritos.
+const VIDA_MIN = 20 * 60 * 1000;
+const VIDA_MAX = 40 * 60 * 1000;
+
+// El trozo de tira que no ocupan las pestanas: del boton + hasta los laterales.
+function huecoSinPestanas() {
+  const mas  = document.getElementById('tabNew');
+  const lado = document.querySelector('.tab-side');
+  if (!mas || !lado || !roost) return null;
+  const cero = roost.getBoundingClientRect().left;
+  const a = mas.getBoundingClientRect().right - cero + 6;
+  const b = lado.getBoundingClientRect().left  - cero - 6;
+  // las pestanas se estiran y dejan poco sitio: si no cabe, no sale nadie
+  return b - a < 30 ? null : [a, b];
+}
+
+/* Monta una percha: unos cuantos kirbys que salen, se quitan y vuelven en otro
+   sitio. `donde` devuelve el tramo [desde, hasta] disponible, o null si no cabe
+   nadie en ese momento (la tira se llena de pestanas y se quedan fuera). */
+function percha(host, cuantos, donde, tam = [16, 22], gifs = KIRBYS_GIF) {
+  if (!host) return;
+
+  const fila = [];
+  for (let i = 0; i < cuantos; i++) {
+    const img = document.createElement('img');
+    img.alt = '';
+    img.draggable = false;
+    host.appendChild(img);
+    fila.push({ img, hueco: -1 });
+  }
+
+  function colocar(k) {
+    const tramo = donde();
+    // sin sitio (la caja esta oculta, o las pestanas se han comido la tira):
+    // se deja el hueco libre y se vuelve a mirar dentro de un rato
+    if (!tramo) { k.hueco = -1; setTimeout(() => colocar(k), 30000); return; }
+
+    const [desde, hasta] = tramo;
+    const ancho = hasta - desde;
+    // el cuerpo de Kirby, que es lo que tiene que caber: sus trastos ya se
+    // saldran por los lados, no pasa nada
+    const alto = Math.min(Math.round(ancho), tam[0] + Math.round(Math.random() * (tam[1] - tam[0])));
+    const huecos = Math.max(cuantos + 1, Math.floor(ancho / 95));
+    const paso = ancho / huecos;
+
+    let h = 0;
+    for (let intento = 0; intento < 14; intento++) {
+      h = Math.floor(Math.random() * huecos);
+      if (!fila.some((o) => o !== k && o.hueco === h)) break;
+    }
+    k.hueco = h;
+
+    // el centro de Kirby cae en el hueco; el lienzo se coloca a partir de ahi
+    let centro = desde + h * paso + paso / 2 + (Math.random() - 0.5) * paso * 0.35;
+    centro = Math.max(desde + alto / 2, Math.min(hasta - alto / 2, centro));
+    k.img.style.setProperty('--x', Math.round(centro - alto * LIENZO_CENTRO) + 'px');
+    k.img.style.setProperty('--s', alto + 'px');
+    k.img.src = gifs[Math.floor(Math.random() * gifs.length)];
+    requestAnimationFrame(() => k.img.classList.add('on'));
+  }
+
+  // Cada uno lleva su propio reloj: cuando se le acaba se encoge, cambia de
+  // sitio y vuelve a asomarse. Al ir por libre no se relevan todos a la vez.
+  function relevo(k) {
+    setTimeout(() => {
+      k.img.classList.remove('on');
+      setTimeout(() => { colocar(k); relevo(k); }, 700);
+    }, VIDA_MIN + Math.random() * (VIDA_MAX - VIDA_MIN));
+  }
+
+  fila.forEach((k, i) => setTimeout(() => { colocar(k); relevo(k); }, 500 + i * 750));
+}
+
+// Cuelga una percha del borde de arriba de una caja de la escena (el chip de
+// "pensando", la nota, la barra del intro automatico...). `tramo` acota en que
+// trozo de ese borde pueden salir, `gifs` con que dibujos y `tam` como de
+// grandes (el alto del cuerpo de Kirby, entre un minimo y un maximo).
+function perchaEncimaDe(selector, cuantos, opciones = {}) {
+  const caja = document.querySelector(selector);
+  if (!caja) return;
+  const p = document.createElement('div');
+  p.className = 'kperch arriba';
+  p.setAttribute('aria-hidden', 'true');
+  caja.appendChild(p);
+  const tramo = opciones.tramo || ((c) => [0, c.clientWidth]);
+  percha(p, cuantos, () => {
+    const [a, b] = tramo(p);
+    return b - a < 50 ? null : [a, b];
+  }, opciones.tam || [14, 19], opciones.gifs);
+}
+
+function kirbysApoyados() {
+  if (!perch) return;
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+  percha(perch, 3, () => [0, perch.clientWidth || 600], [16, 22]);
+  percha(roost, 1, huecoSinPestanas, [13, 18]);
+
+  // los bordes de arriba de las otras cajas tambien son buen sitio para sentarse
+  perchaEncimaDe('.auto', 1);   // la barra del intro automatico
+
+  // encima de "pensando", solo los dos del mando, sentados en el borde
+  perchaEncimaDe('.chip', 1, { gifs: KIRBYS_SENTADOS, tam: [22, 25] });
+
+  // Y en la nota, solo por la derecha: el trozo de su borde que queda debajo
+  // del chip de "pensando" se deja libre, que ahi ya hay quien se siente.
+  perchaEncimaDe('.note', 2, {
+    tramo: (p) => {
+      const chip = document.querySelector('.chip');
+      if (!chip || getComputedStyle(chip).display === 'none') return [0, p.clientWidth];
+      const hueco = chip.getBoundingClientRect().right - p.getBoundingClientRect().left;
+      return [Math.max(0, hueco + 12), p.clientWidth];
+    },
+  });
+}
+
 addEventListener('keydown', (e) => {
   const k = e.key.toLowerCase();
 
@@ -514,6 +711,10 @@ addEventListener('keydown', (e) => {
     // Enciende o apaga el intro automatico sin soltar el teclado.
     e.preventDefault();
     autoSet(!autoOn);
+  } else if (e.metaKey && e.shiftKey && k === 'k') {
+    // Que caiga uno ya, sin esperar al siguiente.
+    e.preventDefault();
+    soltarKirby(true);
   } else if (e.metaKey && e.shiftKey && k === 'p') {
     // Rota los estados para ver como queda sin arrancar Claude.
     e.preventDefault();
@@ -545,3 +746,7 @@ window.kirby.onMenu((que) => {
 });
 
 setNight(night);
+
+// Un saludo al abrir: llueve una vez y se retira sola (cmd+shift+K la repite).
+kirbysApoyados();
+lloverSinParar();

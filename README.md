@@ -256,6 +256,7 @@ esas órdenes al renderer por IPC.
 | `Cmd Shift N`                | modo día / noche (también el sol/luna de la tira)       |
 | `Cmd Shift E`                | intro automático                                        |
 | `Cmd Shift P`                | rota los estados para verlos sin arrancar Claude        |
+| `Cmd Shift K`                | suelta un Kirby de la lluvia sin esperar al siguiente   |
 
 ---
 

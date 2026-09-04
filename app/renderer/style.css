@@ -371,8 +371,117 @@ body[data-state="asking"] .board { animation: pulse 1.5s ease-in-out infinite; }
 /* Los terminales se apilan aqui dentro; solo se ve el de la pestana activa. */
 .board-inner { position: relative; flex: 1 1 auto; min-height: 0; width: 100%; }
 
-.pane { position: absolute; inset: 0; visibility: hidden; }
+.pane { position: absolute; inset: 0; z-index: 0; visibility: hidden; }
 .pane.on { visibility: visible; }
+
+/* ---------------------------------------------------------------------------
+   5a-bis. LA LLUVIA DE KIRBYS — caen despacio por la pizarra, se posan abajo
+   (en la zona donde escribes) y una linea cierra la caida.
+
+   Va por DEBAJO del texto sin estar debajo del canvas: mezclando en multiply
+   sobre el papel blanco. Las letras son oscuras, asi que multiplicar por un
+   rosa claro no las toca; el hueco del papel si se tine. En modo noche el
+   fondo es oscuro y hay que hacer lo contrario (screen).
+   --------------------------------------------------------------------------- */
+.rain {
+  position: absolute;
+  inset: 0;
+  z-index: 15;
+  pointer-events: none;
+  overflow: hidden;
+  opacity: 0;
+  mix-blend-mode: multiply;
+  transition: opacity .9s ease;
+}
+.rain.on { opacity: .72; }
+
+body.night .rain     { mix-blend-mode: screen; }
+body.night .rain.on  { opacity: .5; }
+
+/* Todos los dibujos comparten lienzo (196x144) y dentro de el Kirby mide
+   siempre lo mismo: 40 de alto, centrado en x=102, con los pies en y=119. Asi
+   que de --s (lo que quieres que mida SU CUERPO) sale lo demas: el lienzo es
+   3.6 veces mas alto y 4.9 mas ancho, y por debajo de sus pies sobra .625 de
+   ese cuerpo. Lo que se sale del lienzo son los trastos que lleve. */
+.rain-k {
+  position: absolute;
+  left: var(--x);
+  bottom: calc(0px - var(--s) * .625);
+  width:  calc(var(--s) * 4.9);
+  height: calc(var(--s) * 3.6);
+  animation: caer var(--dur) linear both;
+}
+
+/* El dibujo va dentro, en su propia capa: asi la de fuera se ocupa de bajar y
+   esta del vaiven, que si no se pisarian el transform. Cuelga del punto donde
+   agarra la sombrilla, y de ahi el balanceo de pendulo. */
+.rain-k > i {
+  display: block;
+  width: 100%;
+  height: 100%;
+  transform-origin: 50% 20%;
+  background: url("assets/kirbys/caida.webp") center / contain no-repeat;
+  animation: vaiven var(--vaiven) ease-in-out var(--vdelay) infinite alternate;
+}
+
+@keyframes vaiven {
+  from { transform: translateX(calc(var(--s) * -.6)) rotate(-8deg); }
+  to   { transform: translateX(calc(var(--s) *  .6)) rotate(8deg); }
+}
+
+/* --alto lo pone el renderer: la altura de la pizarra, para saber desde donde
+   soltarlos. Bajan despacio y se van apagando al llegar a la raya. */
+@keyframes caer {
+  0%   { transform: translate3d(0, calc(-1 * var(--alto)), 0); opacity: 0; }
+  7%   { opacity: 1; }
+  92%  { opacity: 1; }
+  100% { transform: translate3d(0, 0, 0); opacity: 0; }
+}
+
+/* ---------------------------------------------------------------------------
+   Los kirbys apoyados en los bordes
+
+   Se apoyan en el suelo de la pizarra, abajo del todo, que ahi no molestan a
+   nada. Salen y se quitan solos, muy de tarde en tarde, y cada vez en un sitio
+   distinto: la fila nunca esta igual dos veces.
+
+   La misma percha se cuelga tambien del borde de arriba de las otras cajas de
+   la escena (el chip de "pensando", la nota y la barra del intro automatico) y
+   del trozo de la tira de pestanas que queda libre. Altura cero a proposito:
+   los kirbys crecen hacia arriba desde el borde del que cuelgan.
+   --------------------------------------------------------------------------- */
+.kperch {
+  position: absolute;
+  left: 0; right: 0;
+  height: 0;
+  z-index: 20;
+  pointer-events: none;
+}
+
+.kperch.abajo  { bottom: 0; }   /* en el suelo de la pizarra */
+.kperch.arriba { top: 0; }      /* de pie sobre el borde de arriba de una caja */
+
+#roost { z-index: 21; }         /* por delante de las pestanas */
+
+.kperch img {
+  position: absolute;
+  bottom: calc(0px - var(--s) * .625);   /* los pies, pegados al borde */
+  left: var(--x);
+  height: calc(var(--s) * 3.6);          /* --s es el cuerpo de Kirby */
+  width:  calc(var(--s) * 4.9);
+  opacity: 0;
+  transform: translateY(6px) scale(.65);
+  transform-origin: bottom center;
+  transition: opacity .45s ease, transform .55s cubic-bezier(.2, 1.25, .4, 1);
+  filter: drop-shadow(0 1px 0 rgba(16, 18, 26, .22));
+}
+.kperch img.on { opacity: 1; transform: translateY(0) scale(1); }
+
+/* De pie sobre un borde: los pies justo encima de la linea negra, sin flotar. */
+.kperch.arriba img,
+#roost img { bottom: calc(1px - var(--s) * .625); }
+
+@media (prefers-reduced-motion: reduce) { .kperch { display: none; } }
 
 /* ---------------------------------------------------------------------------
    5b. Pestanas — misma anatomia que las de Chrome: una tira de fondo mas
@@ -380,6 +489,7 @@ body[data-state="asking"] .board { animation: pulse 1.5s ease-in-out infinite; }
    de abajo mediante las dos curvas concavas de sus esquinas.
    --------------------------------------------------------------------------- */
 .tabs {
+  position: relative;          /* para colgar de aqui la percha de kirbys */
   --strip:      #cfdcf2;   /* la tira donde descansan las pestanas */
   --tab-on:     var(--paper);
   --tab-ink:    #24365f;
@@ -693,7 +803,45 @@ body[data-state="idle"]   .chip,
 body[data-state="asking"] .chip,
 body[data-state="done"]   .chip { display: none; }   /* ahi abajo esta Kirby */
 
-.chip-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--acc); }
+/* El punto ya no es un punto: es la misma carita que llevan las pestanas,
+   tenida del color del estado (ver .tab-fav, misma receta). */
+/* ---------------------------------------------------------------------------
+   La carita de Kirby como marca: la misma imagen y el mismo tenido que el
+   favicon de las pestanas, para los dos circulos (estado e intro automatico).
+   Cada uno pone su color en --dot-tint.
+   --------------------------------------------------------------------------- */
+.chip-dot,
+.auto-dot {
+  position: relative;
+  flex: 0 0 auto;
+  isolation: isolate;
+  filter: saturate(1.45);
+}
+
+.chip-dot::before, .chip-dot::after,
+.auto-dot::before, .auto-dot::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: contain;
+}
+
+.chip-dot::before,
+.auto-dot::before { background-image: url("assets/kirby-icon.png"); }
+
+.chip-dot::after,
+.auto-dot::after {
+  background-color: var(--dot-tint);
+  mix-blend-mode: color;
+  -webkit-mask-image: url("assets/kirby-icon.png");
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  -webkit-mask-size: contain;
+}
+
+.chip-dot { width: 16px; height: 16px; --dot-tint: var(--acc); }
 body[data-state="thinking"] .chip-dot,
 body[data-state="working"]  .chip-dot { animation: blink 1.1s ease-in-out infinite; }
 @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: .25; } }
@@ -739,16 +887,14 @@ body[data-state="working"]  .chip-dot { animation: blink 1.1s ease-in-out infini
 }
 .auto-go:hover { background: #dfe8fa; }
 
-.auto-dot {
-  width: 8px; height: 8px;
-  border-radius: 50%;
-  background: #c2ccdd;
-}
+.auto-dot { width: 14px; height: 14px; --dot-tint: #98a6bd; }
 .auto-key { font-size: 13px; line-height: 1; }
 
 /* Encendido: el boton se pinta del color del estado y el punto parpadea. */
 .auto.on .auto-go  { background: var(--acc); color: var(--paper); }
-.auto.on .auto-dot { background: var(--paper); animation: blink 1.1s ease-in-out infinite; }
+/* Encendido el boton se pinta del color del estado: la carita se destine hasta
+   el gris claro del papel y sigue leyendose encima, con sus ojos y todo. */
+.auto.on .auto-dot { --dot-tint: var(--paper); animation: blink 1.1s ease-in-out infinite; }
 
 /* Un guino en el momento exacto en que se manda el intro. */
 .auto.fire .auto-go { animation: fire .45s ease-out; }
@@ -780,7 +926,8 @@ body.night .auto.on .auto-go { background: var(--acc); color: #0f1626; }
 
 @media (prefers-reduced-motion: reduce) {
   .bub, .cloud, .dots i, .chip-dot, .board, .cut,
-  .auto-dot, .auto-go { animation: none !important; }
+  .auto-dot, .auto-go, .rain-k, .rain-k > i { animation: none !important; }
+  .rain { display: none; }   /* la lluvia es puro adorno: sin motion, no cae */
   /* sin parpadeo, pero el aviso se sigue viendo: la pestana se queda tenida */
   .tab.aviso, .tab.on.aviso, .tab.aviso .tab-fav { animation: none !important; }
   .tab.aviso    { background-color: color-mix(in srgb, var(--rosa) 32%, transparent); }

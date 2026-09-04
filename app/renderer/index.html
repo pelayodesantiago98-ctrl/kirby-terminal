@@ -55,6 +55,9 @@
         </svg>
       </button>
 
+      <!-- kirbys asomandose por el trozo de tira donde no hay pestanas -->
+      <div class="kperch abajo" id="roost" aria-hidden="true"></div>
+
       <!-- dia / noche, al fondo de la tira -->
       <button class="tab-side tab-mode" id="tabMode" type="button"
               title="Modo noche (cmd+shift+N)" aria-label="Modo dia o noche">
@@ -67,7 +70,13 @@
         </svg>
       </button>
     </div>
-    <div class="board-inner" id="termHost"></div>
+    <div class="board-inner" id="termHost">
+      <!-- la lluvia de kirbys vive dentro de la pizarra, por delante del canvas
+           del terminal pero mezclada por debajo de las letras (ver .rain) -->
+      <div class="rain" id="rain" aria-hidden="true"></div>
+      <!-- kirbys animados apoyados en la raya de encima de donde escribes -->
+      <div class="kperch abajo" id="perch" aria-hidden="true"></div>
+    </div>
   </div>
 
   <!-- 6. chip de estado -->
