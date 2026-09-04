@@ -166,7 +166,9 @@ function newTab(fromId) {
   // El titulo lo pone el shell; la chapa lo recorta sola con puntos suspensivos.
   term.onTitleChange((t) => {
     const limpio = (t || '').trim();
-    if (limpio) label.textContent = limpio;
+    if (!limpio) return;
+    tab.bautizada = true;          // manda el shell, no la carpeta
+    label.textContent = limpio;
     retitular(tab);
   });
 
@@ -267,6 +269,16 @@ addEventListener('resize', resize);
 
 window.kirby.onData((id, data) => { const t = byId(id); if (t) t.term.write(data); });
 window.kirby.onExit((id) => { const t = byId(id); if (t) dropTab(t); });
+
+// Nombre de partida: la carpeta donde ha nacido el shell. Si mas tarde el shell
+// manda un titulo, ese manda.
+window.kirby.onCwd((id, cwd, casa) => {
+  const t = byId(id);
+  if (!t || t.bautizada) return;
+  const hoja = cwd.replace(/\/+$/, '').split('/').pop();
+  t.label.textContent = casa ? '~' : (hoja || cwd);
+  retitular(t);
+});
 
 document.getElementById('tabNew').addEventListener('click', () => {
   newTab(active ? active.id : null);

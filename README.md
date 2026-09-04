@@ -8,6 +8,10 @@ No es un fondo de pantalla ni una ventana al lado: es un emulador de terminal
 de verdad, con su PTY, construido sobre **xterm.js** — el mismo componente con
 el que está hecho el terminal de VS Code.
 
+![Kirby Terminal en modo noche, con tres pestañas abiertas](preview/pestanas-noche.png)
+
+![El mismo, en modo día, mientras Claude piensa](preview/pestanas-dia.png)
+
 **Vista previa a tamaño real, con deslizadores para colocar cada pieza:**
 https://claude.ai/code/artifact/3c7f6577-1df0-4cbf-8286-d46f204c188c
 
@@ -164,6 +168,8 @@ Está explicado con esas cuentas en el CSS, junto a cada recorte.
 
 ## Pestañas
 
+![La tira de pestañas, de día y de noche](preview/tira-pestanas.png)
+
 La tira de arriba de la pizarra funciona **como la de Chrome**: la pestaña
 activa se funde con el terminal (esas dos esquinas cóncavas son dos
 `radial-gradient` de 10 px, una a cada lado), las apagadas van planas con su
@@ -176,8 +182,11 @@ Cada pestaña es **un terminal y un PTY de verdad**, no una vista partida:
 - La pestaña nueva **hereda la carpeta** de aquella desde la que la abriste. El
   proceso principal se la pregunta a `lsof -d cwd` sobre el PID del shell; si
   no contesta en 1,5 s se abre en casa y ya está, es un adorno.
-- El nombre lo pone el shell por la secuencia de título; si no dice nada,
-  «terminal N».
+- **El nombre es la carpeta donde nació** (`~`, `claude-term-mac`,
+  `renderer`…). zsh en macOS no manda la secuencia de título salvo que se lo
+  monte uno, así que la pestaña se bautiza con lo que le dice el proceso
+  principal al arrancar el PTY; si el shell llega a mandar un título de verdad,
+  ese manda y ya no se le toca.
 - Solo se mide y se redimensiona **la pestaña visible**: las ocultas están en
   `visibility: hidden`, así conservan su tamaño y no hay que repintarlas al
   volver.
@@ -272,6 +281,7 @@ claude-term-mac/
 │       ├── style.css       ← el bloque AJUSTES está aquí
 │       ├── renderer.js     xterm dentro de la pizarra, una instancia por pestaña
 │       └── assets/         thinking.jpg · terminal.jpg
+├── preview/                capturas: los cinco estados y las pestañas
 ├── hud/                    los hooks (y el HUD viejo en ventana aparte)
 │   ├── hud.py              modo hook + instalador de hooks + servidor
 │   ├── on-event.sh         puente hooks → state.json

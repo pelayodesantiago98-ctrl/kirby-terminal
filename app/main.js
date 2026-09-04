@@ -147,13 +147,19 @@ function startPty(id, cols, rows, fromId) {
   const heredado = fromId != null && ptys.has(fromId) ? cwdOf(ptys.get(fromId).pid) : null;
   const cwd = heredado || process.env.KIRBY_CWD || os.homedir();
 
+  const donde = fs.existsSync(cwd) ? cwd : os.homedir();
+
   const proc = pty.spawn(userShell, ['-l'], {
     name: 'xterm-256color',
     cols: cols || 100,
     rows: rows || 30,
-    cwd: fs.existsSync(cwd) ? cwd : os.homedir(),
+    cwd: donde,
     env: { ...process.env, TERM: 'xterm-256color', TERM_PROGRAM: 'KirbyTerminal' },
   });
+
+  // La ventana bautiza la pestana con el nombre de esta carpeta, hasta que el
+  // shell mande un titulo de verdad (zsh en macOS no manda ninguno de serie).
+  send('pty:cwd', { id, cwd: donde, casa: donde === os.homedir() });
 
   proc.onData((data) => send('pty:data', { id, data }));
 

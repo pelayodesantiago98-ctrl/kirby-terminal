@@ -11,6 +11,7 @@ contextBridge.exposeInMainWorld('kirby', {
   kill:   (id)                     => ipcRenderer.send('pty:kill', { id }),
   onData: (cb) => ipcRenderer.on('pty:data', (_e, m) => cb(m.id, m.data)),
   onExit: (cb) => ipcRenderer.on('pty:exit', (_e, m) => cb(m.id)),
+  onCwd:  (cb) => ipcRenderer.on('pty:cwd',  (_e, m) => cb(m.id, m.cwd, m.casa)),
 
   // --- ventana ---
   reset:       () => ipcRenderer.send('win:reset'),
