@@ -338,6 +338,106 @@ body[data-state="working"]  .note { display: flex; }
   font-variant-numeric: tabular-nums;
 }
 
+/* El Kirby que baila dentro de la nota: solo sale mientras PIENSA. Grande,
+   centrado y con aire por los cuatro lados (los laterales los da el ancho
+   menor que la nota; arriba y abajo, el margen). */
+.note-gif {
+  display: none;
+  align-self: center;
+  width: 74%;
+  max-width: 170px;
+  height: auto;
+  margin: 12px auto 6px;
+}
+body[data-state="thinking"] .note-gif { display: block; }
+
+/* ---------------------------------------------------------------------------
+   4b. Tareas y subagentes, debajo del Kirby. La nota no puede salirse de la
+       escena: se topa abajo y lo que sobra se desplaza dentro de .tasks.
+   --------------------------------------------------------------------------- */
+.note { max-height: calc(100% - var(--note-top) - 2.5%); }
+.tasks[hidden], .tk-sec[hidden] { display: none; }
+
+/* con tareas a la vista el baile se encoge para dejarles sitio */
+body.con-tareas .note-gif {
+  position: absolute; top: 8px; right: 12px;
+  width: 58px; margin: 0; align-self: auto;
+}
+body.con-tareas .note-line { padding-right: 64px; min-height: 36px; }
+
+.tasks {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 8px;
+  border-top: 2px dashed #b9c6e6;
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--board-ink);
+}
+.tk-h {
+  margin: 0 0 4px;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: #6a8ad6;
+}
+.tk-count { font-weight: 500; letter-spacing: 0; text-transform: none; font-variant-numeric: tabular-nums; }
+
+/* checklist */
+.todos { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px;
+         max-height: 6.6em; overflow-y: auto; position: relative; }   /* que los subagentes nunca se queden sin sitio */
+.todo { display: flex; gap: 7px; align-items: flex-start; overflow-wrap: anywhere; }
+.todo-box {
+  flex: none;
+  width: 13px; height: 13px; margin-top: 1px;
+  border: 2px solid var(--outline);
+  border-radius: 4px;
+  background: var(--paper);
+  position: relative;
+}
+.todo[data-status="in_progress"] .todo-box { border-color: var(--acc); background: color-mix(in srgb, var(--acc) 22%, var(--paper)); }
+.todo[data-status="in_progress"] .todo-text { font-weight: 700; }
+.todo[data-status="completed"] .todo-box { background: #35b45c; border-color: #35b45c; }
+.todo[data-status="completed"] .todo-box::after {
+  content: "";
+  position: absolute; left: 3px; top: 0;
+  width: 3px; height: 7px;
+  border: solid #fff; border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+.todo[data-status="completed"] .todo-text { text-decoration: line-through; opacity: .55; }
+
+/* subagentes */
+.ag-group + .ag-group { margin-top: 8px; }
+.ag-tab {
+  font-size: 11px; font-weight: 700;
+  padding: 1px 7px; margin-bottom: 3px;
+  display: inline-block; max-width: 100%;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  background: #e6ecfa; border-radius: 8px;
+}
+.ag { display: flex; gap: 7px; align-items: flex-start; padding: 2px 0; }
+.ag-dot { flex: none; width: 9px; height: 9px; margin-top: 4px; border-radius: 50%; background: #35b45c; }
+.ag[data-status="running"] .ag-dot { background: var(--acc); animation: ag-pulso 1.1s ease-in-out infinite; }
+.ag-body { min-width: 0; }
+.ag-title { overflow-wrap: anywhere; }
+.ag[data-status="done"] .ag-title { opacity: .55; }
+.ag-doing {
+  font-family: "SF Mono", "JetBrains Mono", Menlo, ui-monospace, monospace;
+  font-size: 11px; color: #6a8ad6;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+@keyframes ag-pulso { 50% { opacity: .35; transform: scale(.8); } }
+@media (prefers-reduced-motion: reduce) { .ag[data-status="running"] .ag-dot { animation: none; } }
+
 /* ---------------------------------------------------------------------------
    5. La pizarra — aqui dentro va el terminal de verdad
    --------------------------------------------------------------------------- */
@@ -480,6 +580,16 @@ body.night .rain.on  { opacity: .5; }
 /* De pie sobre un borde: los pies justo encima de la linea negra, sin flotar. */
 .kperch.arriba img,
 #roost img { bottom: calc(1px - var(--s) * .625); }
+
+/* Que los pies caigan EN la raya visible de los bordes, no un pelin fuera:
+   - el suelo de la pizarra tiene 14px de padding por debajo antes del borde
+     negro, asi que sin bajarlos los del suelo flotan por encima de la raya;
+   - las perchas de arriba nacen en el borde interior (dentro del marco), asi
+     que se suben el grosor del marco para posarse justo sobre la linea negra.
+   El chip de "pensando" se queda como esta, que ahi va el sentado a proposito. */
+#perch               { bottom: -14px; }   /* padding inferior de la pizarra */
+.note .kperch.arriba { top: -4px; }       /* grosor del marco de la nota */
+.auto .kperch.arriba { top: -3px; }       /* grosor del marco de la barra auto */
 
 @media (prefers-reduced-motion: reduce) { .kperch { display: none; } }
 

@@ -12,6 +12,9 @@ const pty = require('node-pty');
 // asi que los hooks de Claude Code no cambian.
 const STATE_FILE = path.join(os.homedir(), '.claude', 'hud', 'state.json');
 
+// Lista de tareas y subagentes de cada pestana (la escribe hud.py).
+const TASKS_FILE = path.join(os.homedir(), '.claude', 'hud', 'tasks.json');
+
 let win = null;
 
 // Un PTY por pestana, indexado por el id que reparte la ventana.
@@ -54,6 +57,50 @@ function createWindow() {
   });
 
   win.on('closed', () => { win = null; killAllPtys(); });
+}
+
+/* ---------------------------------------------------------------------------
+   Cambios en caliente (solo cuando se arranca con `npm start`)
+
+   Retocar el decorado no deberia costar cerrar y abrir la app: se mira la
+   carpeta `renderer` y, en cuanto algo cambia, la ventana se entera sola.
+
+   - hojas de estilo y dibujos: se cambian en vivo, sin recargar. El terminal
+     se queda donde estaba y lo que hubiera escrito no se pierde.
+   - guiones y html: no hay mas remedio que recargar, y al recargar los shells
+     de las pestanas mueren (la ventana los mata a proposito al arrancar).
+   --------------------------------------------------------------------------- */
+const EN_VIVO = /\.(css|png|webp|gif|jpe?g|svg)$/i;
+const RECARGA = /\.(js|mjs|html)$/i;
+
+function vigilarRenderer() {
+  if (app.isPackaged) return;
+  const raiz = path.join(__dirname, 'renderer');
+  let pendiente = null;
+  let recargar = false;
+
+  const aviso = (fichero) => {
+    if (!fichero) return;
+    if (RECARGA.test(fichero)) recargar = true;
+    else if (!EN_VIVO.test(fichero)) return;
+
+    clearTimeout(pendiente);
+    pendiente = setTimeout(() => {
+      const todo = recargar;
+      recargar = false;
+      if (!win || win.isDestroyed()) return;
+      if (todo) { win.webContents.reload(); return; }
+      // los dibujos viejos siguen en la cache: fuera, y luego que se cambien
+      win.webContents.session.clearCache().then(() => send('dev:recargar', 'estilos'));
+    }, 150);
+  };
+
+  try {
+    fs.watch(raiz, { recursive: true }, (_e, f) => aviso(f));
+    console.log('[kirby] cambios en caliente: mirando', raiz);
+  } catch (e) {
+    console.log('[kirby] sin cambios en caliente:', e.message);
+  }
 }
 
 function send(channel, payload) {
@@ -249,15 +296,33 @@ function pushState() {
   send('claude:state', readState());
 }
 
+// Tareas por pestana: [{ tabId, todos, agents }]. Solo las de esta ventana.
+function readTasks() {
+  let data;
+  try { data = JSON.parse(fs.readFileSync(TASKS_FILE, 'utf8')); } catch { return []; }
+  const out = [];
+  for (const [marca, v] of Object.entries(data || {})) {
+    const tabId = pestanaDe(marca);
+    if (tabId != null) out.push({ tabId, todos: v.todos || [], agents: v.agents || [] });
+  }
+  return out;
+}
+
+function pushTasks() {
+  send('claude:tasks', readTasks());
+}
+
 function watchState() {
   fs.mkdirSync(path.dirname(STATE_FILE), { recursive: true });
 
   // watchFile (sondeo de stat) y no watch: hud.py reemplaza el fichero de
   // forma atomica, lo que cambia el inodo y deja sordo a fs.watch.
   fs.watchFile(STATE_FILE, { interval: 120 }, pushState);
+  fs.watchFile(TASKS_FILE, { interval: 200 }, pushTasks);
 }
 
 ipcMain.handle('claude:get', () => readState());
+ipcMain.handle('claude:tasks', () => readTasks());
 
 // ---------------------------------------------------------------------------
 
@@ -265,6 +330,7 @@ app.whenReady().then(() => {
   buildMenu();
   createWindow();
   watchState();
+  vigilarRenderer();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();

@@ -91,6 +91,18 @@ const host     = document.getElementById('termHost');
 const tabsList = document.getElementById('tabsList');
 const tabsBar  = document.getElementById('tabs');
 
+// Panel de tareas y subagentes (se pinta mas abajo; se declara aqui porque la
+// primera pestana ya llama a pintarTareas al activarse).
+const tasksBox  = document.getElementById('tasks');
+const todosSec  = document.getElementById('todosSec');
+const todosList = document.getElementById('todos');
+const todosNum  = document.getElementById('todosCount');
+const agentsSec = document.getElementById('agentsSec');
+const agentsBox = document.getElementById('agents');
+const agentsNum = document.getElementById('agentsCount');
+
+let tareas = [];        // lo ultimo que mando el proceso principal
+
 const tabs = [];        // en el orden en que se ven
 let active = null;      // la pestana en pantalla
 let seq = 0;            // id que no se reutiliza nunca
@@ -200,6 +212,7 @@ function activate(id) {
 
   // Si la ventana esta delante, activarla es haberla mirado.
   if (document.hasFocus()) calmar(tab);
+  pintarTareas();
 
   // Estaba oculto, asi que sus medidas estaban congeladas: se recalculan.
   resize();
@@ -386,6 +399,77 @@ function render(s) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Tareas y subagentes
+// Debajo del Kirby que baila: la lista de tareas de la pestana a la vista y los
+// subagentes de todas, agrupados por pestana. Se pinta con textContent y nunca
+// con innerHTML: lo que dicen las tareas lo escribe una IA.
+// ---------------------------------------------------------------------------
+
+
+function el(tag, cls, text) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text != null) e.textContent = text;
+  return e;
+}
+
+function pintarTareas() {
+  const mias = tareas.find((t) => t.tabId === (active && active.id));
+
+  // --- checklist de la pestana visible ---
+  todosList.textContent = '';
+  const todos = (mias && mias.todos) || [];
+  for (const t of todos) {
+    const li = el('li', 'todo');
+    li.dataset.status = t.status;
+    li.appendChild(el('span', 'todo-box'));
+    li.appendChild(el('span', 'todo-text', t.text));
+    todosList.appendChild(li);
+  }
+  const hechas = todos.filter((t) => t.status === 'completed').length;
+  todosNum.textContent = todos.length ? `${hechas}/${todos.length}` : '';
+  todosSec.hidden = !todos.length;
+
+  // --- subagentes, agrupados por pestana (la visible primero) ---
+  agentsBox.textContent = '';
+  let total = 0, vivos = 0;
+  const orden = [...tareas].sort((a, b) =>
+    (b.tabId === (active && active.id)) - (a.tabId === (active && active.id)));
+  for (const g of orden) {
+    const tab = byId(g.tabId);
+    if (!tab || !g.agents.length) continue;
+    const grupo = el('div', 'ag-group');
+    grupo.appendChild(el('div', 'ag-tab', tab.label.textContent));
+    for (const a of g.agents) {
+      total++;
+      if (a.status === 'running') vivos++;
+      const fila = el('div', 'ag');
+      fila.dataset.status = a.status;
+      fila.appendChild(el('span', 'ag-dot'));
+      const cuerpo = el('div', 'ag-body');
+      cuerpo.appendChild(el('div', 'ag-title', `${a.kind}: ${a.text}`));
+      if (a.status === 'running' && a.doing) cuerpo.appendChild(el('div', 'ag-doing', a.doing));
+      fila.appendChild(cuerpo);
+      grupo.appendChild(fila);
+    }
+    agentsBox.appendChild(grupo);
+  }
+  agentsNum.textContent = total ? `${vivos} en marcha` : '';
+  agentsSec.hidden = !total;
+
+  tasksBox.hidden = todosSec.hidden && agentsSec.hidden;
+  document.body.classList.toggle('con-tareas', !tasksBox.hidden);
+
+  // La checklist tiene altura tope: que la tarea en curso quede en el centro.
+  // A mano y no con scrollIntoView, que arrastraria tambien al panel de fuera.
+  const enCurso = todosList.querySelector('.todo[data-status="in_progress"]');
+  if (enCurso) todosList.scrollTop = enCurso.offsetTop - (todosList.clientHeight - enCurso.offsetHeight) / 2;
+}
+
+window.kirby.onTasks((t) => { tareas = t; pintarTareas(); });
+window.kirby.getTasks().then((t) => { tareas = t; pintarTareas(); });
+
 // Volver a la ventana es mirar la pestana que este puesta.
 addEventListener('focus', () => calmar(active));
 
@@ -542,17 +626,33 @@ function lloverSinParar() {
    --------------------------------------------------------------------------- */
 const perch = document.getElementById('perch');   // en el suelo de la pizarra
 const roost = document.getElementById('roost');   // en el hueco sin pestanas
-// Todos normalizados al mismo lienzo, con el cuerpo de Kirby del mismo tamano
-// en los cinco; lo que se sale del lienzo son los trastos que lleve cada uno.
+// Todos normalizados al mismo lienzo (196x144): el cuerpo mide lo mismo en
+// todos, centrado en x=102 y con los pies en y=119, que es donde cae la raya en
+// la que se apoyan. Lo que se sale del lienzo son los trastos que lleve cada uno.
 const KIRBYS_GIF = [
-  'assets/kirbys/k1.webp',
-  'assets/kirbys/k2.webp',
-  'assets/kirbys/k3.webp',
-  'assets/kirbys/k4.webp',
-];
+  'k1', 'k2', 'k3', 'k4',
+  'aleta', 'ave', 'casco', 'chistera', 'cinta', 'copa', 'corona', 'estrella',
+  'gorra', 'gorro', 'hoja', 'pez', 'turbante', 'visera',
+].map((n) => `assets/kirbys/${n}.webp`);
 
 // Los dos sentados con el mando: solo salen encima del chip de "pensando".
 const KIRBYS_SENTADOS = ['assets/kirbys/sentado.webp'];
+
+/* Ningun dibujo sale dos veces a la vez: el que coge uno lo aparta hasta que se
+   va. Con mas dibujos que sitios siempre queda de sobra; si algun dia no
+   quedara, se repite antes que dejar el hueco vacio. (La lluvia va aparte: esa
+   son todos el mismo y caen a puñados.) */
+const enUso = new Set();
+
+function cogerDibujo(gifs, anterior) {
+  enUso.delete(anterior);
+  let libres = gifs.filter((g) => !enUso.has(g) && g !== anterior);
+  if (!libres.length) libres = gifs.filter((g) => !enUso.has(g));
+  if (!libres.length) libres = gifs;
+  const elegido = libres[Math.floor(Math.random() * libres.length)];
+  enUso.add(elegido);
+  return elegido;
+}
 
 // Del alto de Kirby a su lienzo: ancho, y cuanto hay de su centro al borde.
 const LIENZO_CENTRO = 2.55;
@@ -577,7 +677,7 @@ function huecoSinPestanas() {
 /* Monta una percha: unos cuantos kirbys que salen, se quitan y vuelven en otro
    sitio. `donde` devuelve el tramo [desde, hasta] disponible, o null si no cabe
    nadie en ese momento (la tira se llena de pestanas y se quedan fuera). */
-function percha(host, cuantos, donde, tam = [16, 22], gifs = KIRBYS_GIF) {
+function percha(host, cuantos, donde, tam = [16, 22], gifs = KIRBYS_GIF, centrado = false) {
   if (!host) return;
 
   const fila = [];
@@ -586,14 +686,19 @@ function percha(host, cuantos, donde, tam = [16, 22], gifs = KIRBYS_GIF) {
     img.alt = '';
     img.draggable = false;
     host.appendChild(img);
-    fila.push({ img, hueco: -1 });
+    fila.push({ img, hueco: -1, gif: null });
   }
 
   function colocar(k) {
     const tramo = donde();
     // sin sitio (la caja esta oculta, o las pestanas se han comido la tira):
     // se deja el hueco libre y se vuelve a mirar dentro de un rato
-    if (!tramo) { k.hueco = -1; setTimeout(() => colocar(k), 30000); return; }
+    if (!tramo) {
+      k.hueco = -1;
+      enUso.delete(k.gif); k.gif = null;   // suelta el dibujo, que lo coja otro
+      setTimeout(() => colocar(k), 30000);
+      return;
+    }
 
     const [desde, hasta] = tramo;
     const ancho = hasta - desde;
@@ -611,11 +716,14 @@ function percha(host, cuantos, donde, tam = [16, 22], gifs = KIRBYS_GIF) {
     k.hueco = h;
 
     // el centro de Kirby cae en el hueco; el lienzo se coloca a partir de ahi
-    let centro = desde + h * paso + paso / 2 + (Math.random() - 0.5) * paso * 0.35;
+    let centro = centrado
+      ? (desde + hasta) / 2                                  // clavado en medio
+      : desde + h * paso + paso / 2 + (Math.random() - 0.5) * paso * 0.35;
     centro = Math.max(desde + alto / 2, Math.min(hasta - alto / 2, centro));
     k.img.style.setProperty('--x', Math.round(centro - alto * LIENZO_CENTRO) + 'px');
     k.img.style.setProperty('--s', alto + 'px');
-    k.img.src = gifs[Math.floor(Math.random() * gifs.length)];
+    k.gif = cogerDibujo(gifs, k.gif);
+    k.img.src = k.gif;
     requestAnimationFrame(() => k.img.classList.add('on'));
   }
 
@@ -646,7 +754,7 @@ function perchaEncimaDe(selector, cuantos, opciones = {}) {
   percha(p, cuantos, () => {
     const [a, b] = tramo(p);
     return b - a < 50 ? null : [a, b];
-  }, opciones.tam || [14, 19], opciones.gifs);
+  }, opciones.tam || [14, 19], opciones.gifs, opciones.centrado);
 }
 
 function kirbysApoyados() {
@@ -659,8 +767,9 @@ function kirbysApoyados() {
   // los bordes de arriba de las otras cajas tambien son buen sitio para sentarse
   perchaEncimaDe('.auto', 1);   // la barra del intro automatico
 
-  // encima de "pensando", solo los dos del mando, sentados en el borde
-  perchaEncimaDe('.chip', 1, { gifs: KIRBYS_SENTADOS, tam: [22, 25] });
+  // encima de "pensando", solo los dos del mando, sentados en el borde y
+  // siempre en el mismo sitio: justo en el centro del chip.
+  perchaEncimaDe('.chip', 1, { gifs: KIRBYS_SENTADOS, tam: [22, 25], centrado: true });
 
   // Y en la nota, solo por la derecha: el trozo de su borde que queda debajo
   // del chip de "pensando" se deja libre, que ahi ya hay quien se siente.
@@ -673,6 +782,22 @@ function kirbysApoyados() {
     },
   });
 }
+
+/* Cambios en caliente: cuando se guarda una hoja de estilo o un dibujo, el
+   proceso principal avisa por aqui. Se cambian en el sitio (nueva marca en la
+   direccion, que la cache ya se ha vaciado) para no recargar: recargar mataria
+   los shells de las pestanas. Los guiones y el html si recargan, eso lo hace
+   el proceso principal por su cuenta. */
+window.kirby.onDev?.((que) => {
+  if (que !== 'estilos') return;
+  const sello = Date.now();
+  for (const link of document.querySelectorAll('link[rel="stylesheet"]')) {
+    link.href = link.href.split('?')[0] + '?v=' + sello;
+  }
+  for (const img of document.querySelectorAll('img[src]')) {
+    if (img.src.includes('assets/')) img.src = img.src.split('?')[0] + '?v=' + sello;
+  }
+});
 
 addEventListener('keydown', (e) => {
   const k = e.key.toLowerCase();

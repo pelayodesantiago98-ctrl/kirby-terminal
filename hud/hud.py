@@ -14,6 +14,7 @@ Estados: idle | thinking | working | asking | done
 """
 
 import argparse
+import fcntl
 import json
 import os
 import re
@@ -24,6 +25,10 @@ from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 STATE_FILE = os.path.join(HERE, "state.json")
+# Lo que cada pestana tiene entre manos: su lista de tareas y sus subagentes.
+# Va aparte de state.json (que solo guarda el ultimo aviso de cualquiera) porque
+# aqui hace falta recordar varias pestanas a la vez.
+TASKS_FILE = os.path.join(HERE, "tasks.json")
 
 DEFAULT = {
     "rev": 0,
@@ -63,6 +68,127 @@ def write_state(patch):
         json.dump(s, f, ensure_ascii=False)
     os.replace(tmp, STATE_FILE)
     return s
+
+
+# ---------------------------------------------------------------------------
+# Tareas y subagentes por pestana
+#
+#   tasks.json = { "<KIRBY_TAB>": { "todos": [...], "agents": [...], "at": t } }
+#
+# todos:  lo que Claude apunta con TodoWrite  -> {text, status}
+# agents: lo que lanza con Task/Agent          -> {id, kind, text, doing, status}
+#
+# Varios hooks pueden saltar a la vez (agentes en paralelo), asi que leer,
+# cambiar y escribir va bajo un candado; si no, unos pisarian a otros.
+# ---------------------------------------------------------------------------
+
+AGENTS_MAX = 12          # los que se recuerdan por pestana (los terminados mas viejos se van)
+TASK_TOOLS = ("Task", "Agent")
+
+
+def update_tasks(tab, fn):
+    """Aplica fn(entrada_de_la_pestana) y guarda. Sin pestana no hay nada que guardar."""
+    if not tab:
+        return
+    lock = open(TASKS_FILE + ".lock", "w")
+    try:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        try:
+            with open(TASKS_FILE, encoding="utf-8") as f:
+                data = json.load(f)
+        except (OSError, ValueError):
+            data = {}
+        entry = data.get(tab) or {"todos": [], "agents": []}
+        fn(entry)
+        entry["at"] = time.time()
+        if entry.get("todos") or entry.get("agents"):
+            data[tab] = entry
+        else:
+            data.pop(tab, None)          # pestana sin nada: no dejar rastro
+        tmp = TASKS_FILE + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False)
+        os.replace(tmp, TASKS_FILE)
+    finally:
+        lock.close()
+
+
+def track(tab, event, ev):
+    """Pone al dia la lista de tareas y los subagentes de esta pestana."""
+    tool = ev.get("tool_name", "")
+    ti = ev.get("tool_input") or {}
+    agent_id = ev.get("agent_id") or ""       # solo viene si el hook salta DENTRO de un subagente
+
+    if event == "SessionEnd":
+        update_tasks(tab, lambda e: e.update(todos=[], agents=[]))
+        return
+
+    if event == "SessionStart":
+        # Sesion nueva en esta pestana (tambien tras /clear): la de antes ya no cuenta.
+        update_tasks(tab, lambda e: e.update(todos=[], agents=[]))
+        return
+
+    if event == "Stop":
+        # Termino el turno. Un subagente que siga "en marcha" sin que nadie lo
+        # haya cerrado se habra perdido el aviso: no lo dejamos girando para siempre.
+        def cerrar(e):
+            for a in e["agents"]:
+                if a.get("status") == "running":
+                    a["status"] = "done"
+        update_tasks(tab, cerrar)
+        return
+
+    if tool == "TodoWrite" and event == "PreToolUse":
+        todos = []
+        for t in ti.get("todos") or []:
+            if not isinstance(t, dict):
+                continue
+            status = t.get("status", "pending")
+            # en curso se muestra con la forma «gerundio»; el resto, con la de accion
+            text = t.get("activeForm") if status == "in_progress" and t.get("activeForm") else t.get("content", "")
+            todos.append({"text": shorten(text, 90), "status": status})
+        update_tasks(tab, lambda e: e.update(todos=todos))
+        return
+
+    if tool in TASK_TOOLS:
+        uid = ev.get("tool_use_id") or ""
+        if event == "PreToolUse":
+            def lanzar(e):
+                e["agents"].append({
+                    "id": uid,
+                    "kind": shorten(ti.get("subagent_type", "") or "agente", 24),
+                    "text": shorten(ti.get("description") or ti.get("prompt") or "", 90),
+                    "doing": "",
+                    "status": "running",
+                })
+                e["agents"] = e["agents"][-AGENTS_MAX:]
+            update_tasks(tab, lanzar)
+        elif event == "PostToolUse":
+            def cerrar_uno(e):
+                for a in e["agents"]:
+                    if a.get("id") == uid or (not uid and a.get("status") == "running"):
+                        a["status"] = "done"
+                        a["doing"] = ""
+                        break
+            update_tasks(tab, cerrar_uno)
+        return
+
+    # Cualquier otra herramienta usada DENTRO de un subagente: es lo que esta
+    # haciendo ahora. Al primer aviso con agent_id nuevo lo casamos con el
+    # subagente lanzado mas antiguo que aun no tenga dueno.
+    if agent_id and event == "PreToolUse":
+        frase = describe_tool(tool, ti)
+
+        def haciendo(e):
+            mio = next((a for a in e["agents"] if a.get("agent_id") == agent_id), None)
+            if mio is None:
+                mio = next((a for a in e["agents"]
+                            if a.get("status") == "running" and not a.get("agent_id")), None)
+                if mio is None:
+                    return
+                mio["agent_id"] = agent_id
+            mio["doing"] = frase
+        update_tasks(tab, haciendo)
 
 
 # ---------------------------------------------------------------------------
@@ -177,6 +303,11 @@ def run_hook(state):
         patch["desk"] = os.path.basename(cwd.rstrip("/\\")) or cwd
 
     event = ev.get("hook_event_name", "")
+
+    try:
+        track(patch["tab"], event, ev)
+    except Exception:            # las tareas son un adorno: que no estorben al estado
+        pass
 
     if state == "working":
         patch["line"] = describe_tool(ev.get("tool_name", ""), ev.get("tool_input"))

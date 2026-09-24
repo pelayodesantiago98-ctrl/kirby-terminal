@@ -21,7 +21,14 @@ contextBridge.exposeInMainWorld('kirby', {
 
   onMenu: (cb) => ipcRenderer.on('menu', (_e, que) => cb(que)),
 
+  // --- cambios en caliente (solo en desarrollo) ---
+  onDev: (cb) => ipcRenderer.on('dev:recargar', (_e, que) => cb(que)),
+
   // --- estado de Claude ---
   getState: ()   => ipcRenderer.invoke('claude:get'),
   onState:  (cb) => ipcRenderer.on('claude:state', (_e, s) => cb(s)),
+
+  // --- tareas y subagentes de cada pestana ---
+  getTasks: ()   => ipcRenderer.invoke('claude:tasks'),
+  onTasks:  (cb) => ipcRenderer.on('claude:tasks', (_e, t) => cb(t)),
 });

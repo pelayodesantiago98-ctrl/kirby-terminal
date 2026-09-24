@@ -25,10 +25,15 @@
   },
   "build": {
     "appId": "es.lepayimio.kirbyterm",
-    "files": ["main.js", "preload.js", "renderer/**/*"],
+    "files": [
+      "main.js",
+      "preload.js",
+      "renderer/**/*"
+    ],
     "mac": {
       "category": "public.app-category.developer-tools",
-      "target": "dmg"
+      "target": "dmg",
+      "identity": "Kirby Terminal Local Signing"
     }
   }
 }

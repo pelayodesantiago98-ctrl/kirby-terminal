@@ -35,6 +35,20 @@
   <div class="note">
     <div class="note-line" id="noteLine">esperando</div>
     <div class="note-meta"><span id="elapsed">0s</span></div>
+    <!-- el Kirby que baila, solo mientras piensa -->
+    <img class="note-gif" src="assets/kirbo.gif" alt="" aria-hidden="true" draggable="false">
+
+    <!-- lo que sigue Claude: su lista de tareas y los subagentes, por pestana -->
+    <div class="tasks" id="tasks" hidden>
+      <section class="tk-sec" id="todosSec" hidden>
+        <h3 class="tk-h">Tareas <span class="tk-count" id="todosCount"></span></h3>
+        <ul class="todos" id="todos"></ul>
+      </section>
+      <section class="tk-sec" id="agentsSec" hidden>
+        <h3 class="tk-h">Subagentes <span class="tk-count" id="agentsCount"></span></h3>
+        <div id="agents"></div>
+      </section>
+    </div>
   </div>
 
   <!-- 5. LA PIZARRA: los terminales de verdad viven aqui dentro, uno por

@@ -115,6 +115,16 @@ es que faltan las Command Line Tools de Xcode.
 
 Para empaquetarla como `.app` de verdad: `npm run dist`.
 
+Arrancada así (sin empaquetar), la app **se entera sola de los cambios**: mira
+`app/renderer/` y, en cuanto guardas,
+
+- `.css` y dibujos (`.webp`, `.png`, `.gif`, `.svg`) se cambian **en vivo**, sin
+  recargar. El terminal sigue donde estaba y no pierdes lo que hubiera escrito;
+- `.js` y `.html` **recargan la ventana**, que es la única forma de volver a
+  ejecutarlos. Al recargar, los shells de las pestañas mueren a propósito.
+
+En la `.app` empaquetada esto no se activa.
+
 ---
 
 ## Cómo está enganchado
@@ -166,6 +176,26 @@ aspect-ratio:         (w · ancho_original) / (h · alto_original)
 ```
 
 Está explicado con esas cuentas en el CSS, junto a cada recorte.
+
+### Los kirbys sueltos: el lienzo común
+
+Los muñecos animados de `assets/kirbys/` son otra cosa: no son recortes por CSS,
+son ficheros. Caen por la pizarra (la lluvia) y se apoyan en los bordes de las
+cajas de la escena — el suelo del terminal, el hueco de la tira de pestañas, el
+chip de estado, la nota y la barra del intro automático.
+
+**Todos comparten un mismo lienzo de 196×144**, y dentro de él el cuerpo de
+Kirby cae siempre en el mismo sitio: **centrado en x=102, con los pies en
+y=119**. De ahí salen las cuentas del CSS: de `--s` (lo que quieres que mida su
+cuerpo) el lienzo es 3,6 veces más alto y 4,9 más ancho, y por debajo de los
+pies sobra `.625` de ese cuerpo. Lo que se sale del lienzo son los trastos que
+lleve cada uno: la espada, el martillo, la sombrilla. Si un dibujo nuevo no
+respeta ese convenio, se ve flotando o hundido en la raya.
+
+De los apoyados **no se repite ninguno a la vez**: el que coge un dibujo lo
+aparta hasta que se va, así que en pantalla hay siempre uno de cada. Hay más
+dibujos que sitios, de sobra. La lluvia va aparte — esos son todos el mismo y
+caen a puñados.
 
 ---
 
@@ -322,6 +352,7 @@ claude-term-mac/
 │       ├── style.css       ← el bloque AJUSTES está aquí
 │       ├── renderer.js     xterm dentro de la pizarra, una instancia por pestaña
 │       └── assets/         thinking.jpg · terminal.jpg
+│           └── kirbys/     los muñecos animados, todos en el mismo lienzo
 ├── preview/                capturas: los cinco estados y las pestañas
 ├── hud/                    los hooks (y el HUD viejo en ventana aparte)
 │   ├── hud.py              modo hook + instalador de hooks + servidor
@@ -351,6 +382,12 @@ vendido. Están aquí porque este proyecto entero nació de ellos.
 
 Afecta a `app/renderer/assets/`, `hud/assets/` y a todo lo de `preview/`, que
 son recortes y escalados de esas mismas dos imágenes.
+
+**Los muñecos animados de `app/renderer/assets/kirbys/` vienen del mismo sitio
+y con el mismo problema:** son GIF de Pinterest, repinneados sin firma y sin
+rastro del autor. Aquí están recortados uno a uno de las hojas de sprites y
+recolocados sobre el lienzo común, pero el dibujo no es mío. Uno de los pliegos
+es [éste](https://i.pinimg.com/originals/09/7f/14/097f14e8fafd2887a7f2d8c9709667af.gif).
 
 El **icono redondo de las pestañas** (`app/renderer/assets/kirby-icon.png`) es
 otra cosa: es
